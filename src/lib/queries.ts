@@ -305,3 +305,17 @@ export async function getStoresForAdmin() {
     products: store._count.placements,
   }));
 }
+
+export async function getUsers() {
+  return prisma.user.findMany({
+    orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+    include: {
+      _count: { select: { lists: true } },
+      decidedBy: { select: { firstName: true, lastName: true } },
+    },
+  });
+}
+
+export async function countPendingUsers(): Promise<number> {
+  return prisma.user.count({ where: { status: "pending" } });
+}

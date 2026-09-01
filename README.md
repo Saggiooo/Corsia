@@ -4,8 +4,9 @@ Webapp mobile-first per fare la spesa all'Extracoop di Villanova: componi la
 lista, Corsia calcola in che ordine prendere le cose e ti disegna il percorso
 sulla mappa del negozio.
 
-Accesso con email e password, account creati a mano: niente registrazione
-pubblica ne' recupero password. Ogni utente ha le sue liste, i suoi preferiti e
+Accesso con email e password. Chi non ha un account puo' chiederlo dalla
+pagina di registrazione, ma entra solo dopo che un admin lo ha approvato.
+Niente recupero password. Ogni utente ha le sue liste, i suoi preferiti e
 i suoi prodotti salvati; mappe e posizioni dei prodotti sono invece patrimonio
 comune, e le cambiano solo gli **admin**. I **member** usano l'app e segnalano
 quando un prodotto non e' dove dice Corsia.
@@ -65,15 +66,36 @@ npm run dev
 
 ## Utenti
 
-Gli account si creano da riga di comando:
+### Registrazione
+
+`/registrati` e' pubblica: nome, cognome, email e password (almeno 8 caratteri).
+L'account nasce in stato `pending` e non permette di entrare: al tentativo di
+accesso lo dice, ma solo a chi ha la password giusta, cosi' la pagina non
+rivela a un estraneo quali indirizzi esistono. Registrandosi con un indirizzo
+gia' presente la risposta e' identica e non viene creato nulla, per lo stesso
+motivo.
+
+Un admin decide da `/admin/utenti`: approvare (scegliendo member o admin),
+rifiutare, cambiare ruolo o revocare. Revocare chiude subito le sessioni
+aperte, e ogni richiesta verifica lo stato dell'account: un accesso tolto ha
+effetto immediato, non alla scadenza del cookie.
+
+La registrazione si chiude da sola oltre le 20 richieste in attesa: la pagina
+e' pubblica, e un tetto evita che qualcuno riempia il database senza bloccare
+l'uso normale. Si riapre appena la coda viene smaltita.
+
+### Da riga di comando
+
+Gli account creati cosi' nascono gia' approvati:
 
 ```bash
 npx tsx scripts/user.mts aggiungi mario@esempio.it Mario Rossi
 ```
 
 Senza password ne genera una e la stampa. Gli altri comandi sono `elenco`,
-`password <email> <nuova>` (che chiude anche le sessioni aperte) e
-`rimuovi <email>` (che cancella l'utente con tutte le sue liste).
+`approva <email> [ruolo]`, `password <email> <nuova>` (che chiude anche le
+sessioni aperte) e `rimuovi <email>` (che cancella l'utente con tutte le sue
+liste).
 
 ### Ruoli
 
@@ -163,15 +185,36 @@ refuso si vede subito.
 
 ### Utenti
 
-Gli account si creano da riga di comando:
+### Registrazione
+
+`/registrati` e' pubblica: nome, cognome, email e password (almeno 8 caratteri).
+L'account nasce in stato `pending` e non permette di entrare: al tentativo di
+accesso lo dice, ma solo a chi ha la password giusta, cosi' la pagina non
+rivela a un estraneo quali indirizzi esistono. Registrandosi con un indirizzo
+gia' presente la risposta e' identica e non viene creato nulla, per lo stesso
+motivo.
+
+Un admin decide da `/admin/utenti`: approvare (scegliendo member o admin),
+rifiutare, cambiare ruolo o revocare. Revocare chiude subito le sessioni
+aperte, e ogni richiesta verifica lo stato dell'account: un accesso tolto ha
+effetto immediato, non alla scadenza del cookie.
+
+La registrazione si chiude da sola oltre le 20 richieste in attesa: la pagina
+e' pubblica, e un tetto evita che qualcuno riempia il database senza bloccare
+l'uso normale. Si riapre appena la coda viene smaltita.
+
+### Da riga di comando
+
+Gli account creati cosi' nascono gia' approvati:
 
 ```bash
 npx tsx scripts/user.mts aggiungi mario@esempio.it Mario Rossi
 ```
 
 Senza password ne genera una e la stampa. Gli altri comandi sono `elenco`,
-`password <email> <nuova>` (che chiude anche le sessioni aperte) e
-`rimuovi <email>` (che cancella l'utente con tutte le sue liste).
+`approva <email> [ruolo]`, `password <email> <nuova>` (che chiude anche le
+sessioni aperte) e `rimuovi <email>` (che cancella l'utente con tutte le sue
+liste).
 
 ### Ruoli
 

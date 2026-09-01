@@ -4,6 +4,7 @@
  *
  *   npx tsx scripts/user.mts elenco
  *   npx tsx scripts/user.mts aggiungi mario@esempio.it Mario Rossi [password]
+ *   npx tsx scripts/user.mts approva mario@esempio.it [admin|member]
  *   npx tsx scripts/user.mts ruolo mario@esempio.it admin
  *   npx tsx scripts/user.mts password mario@esempio.it nuovaPassword
  *   npx tsx scripts/user.mts rimuovi mario@esempio.it
@@ -43,7 +44,7 @@ async function main() {
       for (const user of users) {
         console.log(
           `${user.email.padEnd(30)} ${`${user.firstName} ${user.lastName}`.padEnd(24)} ` +
-            `${user.role.padEnd(7)} ${user._count.lists} liste, ${user._count.saved} salvati`,
+            `${user.role.padEnd(7)} ${user.status.padEnd(9)} ${user._count.lists} liste, ${user._count.saved} salvati`,
         );
       }
       return;
@@ -72,6 +73,20 @@ async function main() {
 
       console.log(`Creato ${user.email} (${user.role})`);
       if (!password) console.log(`Password generata: ${chosen}`);
+      return;
+    }
+
+    case "approva": {
+      const [email] = args;
+      if (!email) throw new Error("uso: approva <email> [admin|member]");
+      const role = (args[1] as "admin" | "member" | undefined) ?? "member";
+
+      const user = await prisma.user.update({
+        where: { email: normalizeEmail(email) },
+        data: { status: "approved", role, decidedAt: new Date() },
+      });
+
+      console.log(`${user.email} approvato come ${user.role}`);
       return;
     }
 
@@ -118,7 +133,7 @@ async function main() {
     }
 
     default:
-      console.log("Comandi: elenco | aggiungi | ruolo | password | rimuovi");
+      console.log("Comandi: elenco | aggiungi | approva | ruolo | password | rimuovi");
       process.exitCode = 1;
   }
 }

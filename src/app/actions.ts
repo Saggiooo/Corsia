@@ -765,3 +765,47 @@ export async function renameAisle(aisleId: string, name: string, sequence: numbe
 
   revalidatePath("/", "layout");
 }
+
+// --- Utenti (admin) --------------------------------------------------------
+
+/** Approva una richiesta di accesso e assegna il ruolo. */
+export async function approveUser(userId: string, role: "admin" | "member") {
+  const admin = await requireAdmin();
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { status: "approved", role, decidedAt: new Date(), decidedById: admin.id },
+  });
+
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Rifiuta una richiesta o revoca un account gia' attivo. Le sessioni aperte
+ * vengono chiuse: revocare l'accesso deve avere effetto subito, non alla
+ * scadenza del cookie.
+ */
+export async function rejectUser(userId: string) {
+  const admin = await requireAdmin();
+  if (admin.id === userId) throw new Error("Non puoi revocare il tuo stesso accesso");
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { status: "rejected", decidedAt: new Date(), decidedById: admin.id },
+    }),
+    prisma.session.deleteMany({ where: { userId } }),
+  ]);
+
+  revalidatePath("/", "layout");
+}
+
+export async function setUserRole(userId: string, role: "admin" | "member") {
+  const admin = await requireAdmin();
+  if (admin.id === userId && role === "member") {
+    throw new Error("Non puoi toglierti i permessi da solo");
+  }
+
+  await prisma.user.update({ where: { id: userId }, data: { role } });
+  revalidatePath("/", "layout");
+}

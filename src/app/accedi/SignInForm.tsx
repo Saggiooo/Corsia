@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { signInAction, type SignInState } from "./actions";
 import { Wordmark } from "@/components/ui/Wordmark";
 
-const INITIAL: SignInState = { error: null };
+const INITIAL: SignInState = { error: null, email: "" };
 
 export function SignInForm({ target }: { target: string }) {
   const [state, action, pending] = useActionState(signInAction, INITIAL);
@@ -24,6 +25,7 @@ export function SignInForm({ target }: { target: string }) {
           <input
             name="email"
             type="email"
+            defaultValue={state.email}
             autoComplete="username"
             inputMode="email"
             required
@@ -61,8 +63,15 @@ export function SignInForm({ target }: { target: string }) {
         </button>
       </form>
 
+      <Link
+        href="/registrati"
+        className="mt-3 block w-full rounded-full border border-[var(--color-line)] py-3.5 text-center text-[var(--color-ink-2)]"
+      >
+        Registrati
+      </Link>
+
       <p className="mt-8 text-center text-sm text-[var(--color-ink-3)]">
-        Gli account li crea l&apos;amministratore: non c&apos;è registrazione.
+        Le registrazioni vanno approvate da un amministratore.
       </p>
     </>
   );

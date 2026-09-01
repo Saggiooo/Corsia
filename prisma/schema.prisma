@@ -52,6 +52,13 @@ enum Role {
   member
 }
 
+enum UserStatus {
+  /// Registrato da solo, in attesa che un admin decida.
+  pending
+  approved
+  rejected
+}
+
 enum StoreStatus {
   /// Mappato e utilizzabile.
   active
@@ -218,13 +225,21 @@ model Placement {
 
 /// Utenti creati a mano da scripts/user.mts: niente registrazione pubblica.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String     @id @default(cuid())
+  email        String     @unique
   passwordHash String
   firstName    String
   lastName     String
-  role         Role     @default(member)
-  createdAt    DateTime @default(now())
+  role         Role       @default(member)
+  /// Gli account creati da riga di comando nascono gia' approvati; quelli
+  /// che arrivano dalla registrazione pubblica no.
+  status       UserStatus @default(approved)
+  createdAt    DateTime   @default(now())
+  decidedAt    DateTime?
+  decidedById  String?
+
+  decidedBy User?  @relation("UserDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decided   User[] @relation("UserDecider")
 
   sessions  Session[]
   lists     List[]

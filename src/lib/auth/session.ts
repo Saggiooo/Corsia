@@ -32,7 +32,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     include: { user: true },
   });
 
-  if (!session || session.expiresAt < new Date()) return null;
+  // Un account revocato non deve poter usare una sessione gia' aperta.
+  if (!session || session.expiresAt < new Date() || session.user.status !== "approved") return null;
 
   return {
     id: session.user.id,
@@ -64,6 +65,10 @@ export async function requireAdmin(): Promise<SessionUser> {
  * Verifica le credenziali e apre una sessione. Il messaggio di errore e' lo
  * stesso sia che l'email non esista sia che la password sia sbagliata: non c'e'
  * motivo di far scoprire quali indirizzi hanno un account.
+ *
+ * Lo stato dell'account si controlla solo dopo aver verificato la password,
+ * cosi' "in attesa di approvazione" lo legge chi possiede le credenziali e non
+ * un estraneo che prova indirizzi a caso.
  */
 export async function signIn(email: string, password: string): Promise<{ error: string } | null> {
   const normalized = email.trim().toLowerCase();
@@ -71,6 +76,14 @@ export async function signIn(email: string, password: string): Promise<{ error: 
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
     return { error: "Email o password non corrette." };
+  }
+
+  if (user.status === "pending") {
+    return { error: "Il tuo account è in attesa di approvazione da parte di un amministratore." };
+  }
+
+  if (user.status === "rejected") {
+    return { error: "La tua richiesta di accesso non è stata approvata." };
   }
 
   const token = newSessionToken();

@@ -20,9 +20,9 @@ export default function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Tutto tranne: la pagina di accesso, gli asset statici, le icone
+     * Tutto tranne: accesso e registrazione, gli asset statici, le icone
      * generate, il manifest e il service worker.
      */
-    "/((?!accedi|_next/static|_next/image|favicon.ico|icon|apple-icon|manifest.webmanifest|sw.js).*)",
+    "/((?!accedi|registrati|_next/static|_next/image|favicon.ico|icon|apple-icon|manifest.webmanifest|sw.js).*)",
   ],
 };

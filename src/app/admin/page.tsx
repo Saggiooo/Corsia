@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { Icon } from "@/components/icons/Icon";
-import { countPendingReports } from "@/lib/queries";
+import { countPendingReports, countPendingUsers } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminHome() {
-  const pending = await countPendingReports();
+  const [pending, waiting] = await Promise.all([countPendingReports(), countPendingUsers()]);
 
   const entries = [
     {
@@ -28,6 +28,13 @@ export default async function AdminHome() {
       title: "Posizioni prodotti",
       description: "Scegli un supermercato e sposta prodotti o interi reparti.",
       badge: null,
+    },
+    {
+      href: "/admin/utenti",
+      icon: "star",
+      title: "Utenti",
+      description: "Approva chi si registra, assegna i ruoli, revoca accessi.",
+      badge: waiting || null,
     },
     {
       href: "/admin/segnalazioni",
