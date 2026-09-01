@@ -13,3 +13,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Mantieni invariato il catalogo storico in `CATALOG`; inserisci le nuove voci curate in `EXPANSION`.
 - I termini equivalenti di ricerca appartengono a `SEARCH_ALIASES`; le intenzioni che devono proporre più risultati appartengono a `SEARCH_GROUPS`.
 - Dopo modifiche al catalogo esegui `npm run db:seed`: le posizioni confermate manualmente non devono essere sovrascritte.
+
+## Deployment
+
+- `output: "standalone"` deve restare attivo per Docker e disattivato quando `VERCEL=1`: Next.js 16.3 con l'adapter Vercel altrimenti fallisce cercando `.next/next-server.js.nft.json`.
+- Su Vercel usa `DATABASE_URL` per l'app e `DATABASE_URL_UNPOOLED` come `DIRECT_URL` durante `npm run db:deploy`.
