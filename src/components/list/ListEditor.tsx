@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { addFreeText, addProduct, removeItem, routeAndOpen, setQty } from "@/app/actions";
+import { addFreeText, addProduct, removeItem, routeAndOpen, setNote, setQty } from "@/app/actions";
 import { Icon } from "@/components/icons/Icon";
 import { AisleBadge } from "@/components/ui/AisleBadge";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
@@ -11,6 +11,7 @@ export type EditorItem = {
   id: string;
   name: string;
   size: string | null;
+  note: string | null;
   qty: number;
   iconKey: string | null;
   categoryName: string;
@@ -39,6 +40,7 @@ type Props = {
 };
 
 export function ListEditor({ listId, items, categories, frequent }: Props) {
+  const [editingNote, setEditingNote] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -270,52 +272,86 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
 
                 <ul className="space-y-2">
                   {group.map((item) => (
-                    <li key={item.id} className="plate flex items-center gap-3 p-3">
-                      <ProductAvatar
-                        iconKey={item.iconKey}
-                        fallback={item.categoryIcon}
-                        colorToken={item.colorToken}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{item.name}</p>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <AisleBadge aisle={item.aisleName ?? "Senza corsia"} tone="soft" />
-                          {item.locationLabel && (
-                            <span className="truncate text-[11px] text-[var(--color-ink-3)]">
-                              {item.locationLabel}
-                            </span>
-                          )}
+                    <li key={item.id} className="plate p-3">
+                      <div className="flex items-start gap-3">
+                        <ProductAvatar
+                          iconKey={item.iconKey}
+                          fallback={item.categoryIcon}
+                          colorToken={item.colorToken}
+                        />
+
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <p className="truncate font-medium">{item.name}</p>
+                          {item.note ? (
+                            <p className="truncate text-[13px] text-[var(--color-signal)]">{item.note}</p>
+                          ) : null}
+                          <div className="mt-1.5 flex">
+                            <AisleBadge
+                              aisle={item.aisleName ?? "Senza corsia"}
+                              detail={item.locationLabel}
+                              tone="soft"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Comandi impilati: sulla riga singola il nome finiva troncato. */}
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          <div className="flex items-center gap-0.5 rounded-full bg-[var(--color-paper-2)] p-1">
+                            <button
+                              type="button"
+                              aria-label="Togli uno"
+                              onClick={() => startTransition(() => setQty(item.id, item.qty - 1))}
+                              className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                            >
+                              −
+                            </button>
+                            <span className="font-display w-4 text-center text-sm">{item.qty}</span>
+                            <button
+                              type="button"
+                              aria-label="Aggiungi uno"
+                              onClick={() => startTransition(() => setQty(item.id, item.qty + 1))}
+                              className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              aria-label={`Aggiungi una nota a ${item.name}`}
+                              onClick={() => setEditingNote(editingNote === item.id ? null : item.id)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full"
+                              style={
+                                item.note || editingNote === item.id
+                                  ? { background: "var(--color-signal-soft)", color: "var(--color-signal)" }
+                                  : { color: "var(--color-ink-3)" }
+                              }
+                            >
+                              <Icon name="pencil" size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Rimuovi ${item.name}`}
+                              onClick={() => startTransition(() => removeItem(item.id))}
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-ink-3)]"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 rounded-full bg-[var(--color-paper-2)] p-1">
-                        <button
-                          type="button"
-                          aria-label="Togli uno"
-                          onClick={() => startTransition(() => setQty(item.id, item.qty - 1))}
-                          className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
-                        >
-                          −
-                        </button>
-                        <span className="font-display w-5 text-center text-sm">{item.qty}</span>
-                        <button
-                          type="button"
-                          aria-label="Aggiungi uno"
-                          onClick={() => startTransition(() => setQty(item.id, item.qty + 1))}
-                          className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <button
-                        type="button"
-                        aria-label={`Rimuovi ${item.name}`}
-                        onClick={() => startTransition(() => removeItem(item.id))}
-                        className="ml-1 text-[var(--color-ink-3)]"
-                      >
-                        ✕
-                      </button>
+                      {editingNote === item.id && (
+                        <NoteField
+                          initial={item.note ?? ""}
+                          onSave={(note) => {
+                            setEditingNote(null);
+                            startTransition(() => setNote(item.id, note));
+                          }}
+                          onCancel={() => setEditingNote(null)}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -343,5 +379,42 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
         </div>
       )}
     </>
+  );
+}
+
+/** Campo per la nota personale: marca, formato, "quello verde", quel che serve. */
+function NoteField({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave: (note: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+
+  return (
+    <div className="mt-2.5 flex items-center gap-2 border-t border-[var(--color-line)] pt-2.5">
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSave(value);
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder="Marca, formato, dettaglio…"
+        enterKeyHint="done"
+        className="min-w-0 flex-1 rounded-full bg-[var(--color-paper-2)] px-3.5 py-2 text-sm outline-none placeholder:text-[var(--color-ink-3)]"
+      />
+      <button
+        type="button"
+        onClick={() => onSave(value)}
+        className="shrink-0 rounded-full bg-[var(--color-ink)] px-4 py-2 text-sm text-[var(--color-paper)]"
+      >
+        Salva
+      </button>
+    </div>
   );
 }

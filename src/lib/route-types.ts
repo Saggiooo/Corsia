@@ -3,6 +3,8 @@ export type StopSnapshot = {
   itemId: string;
   productId: string | null;
   name: string;
+  /** Nota personale scritta sulla riga di lista, es. "Barilla mezzo kg". */
+  note: string | null;
   qty: number;
   unit: string | null;
   size: string | null;
@@ -22,6 +24,7 @@ export type StopSnapshot = {
 export type OrphanSnapshot = {
   itemId: string;
   name: string;
+  note: string | null;
   qty: number;
   unit: string | null;
   reason: "senza-posizione" | "irraggiungibile";

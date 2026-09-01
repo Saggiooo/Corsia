@@ -84,7 +84,11 @@ export type SearchHit = {
   confirmed: boolean;
 };
 
-/** Ricerca fuzzy sul catalogo (pg_trgm), con la posizione nota del prodotto. */
+/**
+ * Ricerca fuzzy sul catalogo, con la posizione nota del prodotto.
+ * Sia ILIKE '%…%' sia l'operatore % di pg_trgm passano dall'indice GIN;
+ * `similarity()` resta solo nell'ordinamento, dove l'indice non serve.
+ */
 export async function searchProducts(query: string, limit = 24): Promise<SearchHit[]> {
   const term = query.trim().toLowerCase();
   if (term.length < 2) return [];
@@ -107,7 +111,7 @@ export async function searchProducts(query: string, limit = 24): Promise<SearchH
     LEFT JOIN "Location" l ON l.id = pl."locationId"
     LEFT JOIN "Aisle" a ON a.id = l."aisleId"
     WHERE p."searchText" ILIKE '%' || ${term} || '%'
-       OR similarity(p."searchText", ${term}) > 0.22
+       OR p."searchText" % ${term}
     ORDER BY (p."searchText" ILIKE ${term} || '%') DESC,
              similarity(p."searchText", ${term}) DESC,
              p."timesBought" DESC,

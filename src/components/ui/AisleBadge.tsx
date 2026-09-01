@@ -15,10 +15,10 @@ export function AisleBadge({ aisle, detail, tone = "soft", className = "" }: Pro
 
   return (
     <span
-      className={`inline-flex items-baseline gap-1.5 rounded-full border px-2.5 py-1 ${tones[tone]} ${className}`}
+      className={`inline-flex max-w-full items-baseline gap-1.5 overflow-hidden rounded-full border px-2.5 py-1 whitespace-nowrap ${tones[tone]} ${className}`}
     >
-      <span className="tag font-display leading-none">{aisle}</span>
-      {detail && <span className="text-[11px] leading-none opacity-70">{detail}</span>}
+      <span className="tag font-display shrink-0 leading-none">{aisle}</span>
+      {detail && <span className="truncate text-[11px] leading-none opacity-70">{detail}</span>}
     </span>
   );
 }

@@ -83,6 +83,20 @@ export async function removeItem(itemId: string) {
   revalidatePath(`/liste/${item.listId}`);
 }
 
+/**
+ * Nota personale sulla riga: il catalogo tiene prodotti generici ("Spaghetti"),
+ * qui ci scrivi quello che vuoi davvero ("Barilla mezzo kg"). Non cambia la
+ * posizione a scaffale, quindi non invalida il percorso.
+ */
+export async function setNote(itemId: string, note: string): Promise<void> {
+  const trimmed = note.trim();
+  const item = await prisma.listItem.update({
+    where: { id: itemId },
+    data: { note: trimmed || null },
+  });
+  revalidatePath(`/liste/${item.listId}`, "layout");
+}
+
 export async function toggleChecked(itemId: string, checked: boolean): Promise<void> {
   const item = await prisma.listItem.update({
     where: { id: itemId },
@@ -148,6 +162,7 @@ export async function computeRoute(listId: string, mode?: "shortest" | "coldchai
       orphans.push({
         itemId: item.id,
         name: item.product?.name ?? item.rawText,
+        note: item.note,
         qty: item.qty,
         unit: item.unit,
         reason: "senza-posizione",
@@ -167,6 +182,7 @@ export async function computeRoute(listId: string, mode?: "shortest" | "coldchai
       itemId: item.id,
       productId: item.product.id,
       name: item.product.name,
+      note: item.note,
       qty: item.qty,
       unit: item.unit,
       size: item.product.size,
@@ -199,6 +215,7 @@ export async function computeRoute(listId: string, mode?: "shortest" | "coldchai
     orphans.push({
       itemId: stop.id,
       name: snapshot?.name ?? "Prodotto",
+      note: snapshot?.note ?? null,
       qty: snapshot?.qty ?? 1,
       unit: snapshot?.unit ?? null,
       reason: "irraggiungibile",

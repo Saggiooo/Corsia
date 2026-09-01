@@ -25,12 +25,19 @@ type SnapshotRow = {
 };
 
 /**
- * Catalogo da caricare: lo snapshot scaricato da coopshop.it se c'e', altrimenti
- * la lista curata a mano. L'app non dipende mai dalla rete.
+ * Catalogo da caricare. Di default la lista curata a mano: prodotti generici
+ * ("Spaghetti", non "Spaghetti Barilla n.5 500g"), perche' la posizione a
+ * scaffale e' la stessa per tutte le paste e il dettaglio lo aggiunge la nota
+ * sulla riga della lista. Con `--from-snapshot` si carica invece il catalogo
+ * completo scaricato da coopshop.it. L'app non dipende mai dalla rete.
  */
 function loadCatalog(): { products: ProductSeed[]; source: string } {
-  if (!existsSync(SNAPSHOT)) {
+  if (!process.argv.includes("--from-snapshot")) {
     return { products: PRODUCTS, source: "lista curata" };
+  }
+
+  if (!existsSync(SNAPSHOT)) {
+    throw new Error(`--from-snapshot richiesto ma ${SNAPSHOT} non esiste. Lancia scripts/scrape-coop.ts.`);
   }
 
   const known = new Set(CATEGORIES.map((c) => c.slug));
@@ -49,6 +56,12 @@ function loadCatalog(): { products: ProductSeed[]; source: string } {
     }));
 
   return { products, source: `snapshot (${products.length} righe)` };
+}
+
+function chunked<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
 }
 
 /** Nomi e formati si ripetono nel catalogo: lo slug va reso univoco. */
@@ -191,56 +204,143 @@ async function main() {
   }
 
   const catalog = loadCatalog();
-
-  let created = 0;
-  let moved = 0;
   const seenSlugs = new Set<string>();
 
+  type Row = {
+    slug: string;
+    name: string;
+    brand: string | null;
+    size: string | null;
+    ean: string | null;
+    sourceUrl: string | null;
+    categoryId: string;
+    iconKey: string | null;
+    searchText: string;
+    home: string;
+  };
+
+  const rows: Row[] = [];
+  const seenEans = new Set<string>();
+
   for (const product of catalog.products) {
-    const slug = uniqueSlug(slugify(`${product.name} ${product.size ?? ""}`), seenSlugs);
     const category = CATEGORIES.find((c) => c.slug === product.categorySlug)!;
+    const slug = uniqueSlug(slugify(`${product.name} ${product.size ?? ""}`), seenSlugs);
     const bays = baysOf.get(`${category.home[0]}/${category.home[1]}`) ?? [category.home[2]];
     const bay = bays[hash(slug) % bays.length];
-    const home = locationId.get(`${category.home[0]}/${category.home[1]}/${bay}`)!;
 
-    const row = await prisma.product.upsert({
-      where: { slug },
-      create: {
-        slug,
-        name: product.name,
-        brand: product.brand,
-        size: product.size,
-        ean: product.ean,
-        sourceUrl: product.sourceUrl,
-        categoryId: categoryId.get(product.categorySlug)!,
-        iconKey: product.iconKey,
-        searchText: searchTextOf(product),
-      },
-      update: {
-        name: product.name,
-        brand: product.brand,
-        size: product.size,
-        sourceUrl: product.sourceUrl,
-        categoryId: categoryId.get(product.categorySlug)!,
-        iconKey: product.iconKey,
-        searchText: searchTextOf(product),
+    // L'EAN e' unico a schema: nel catalogo capita ripetuto fra varianti.
+    const ean = product.ean && !seenEans.has(product.ean) ? product.ean : null;
+    if (ean) seenEans.add(ean);
+
+    rows.push({
+      slug,
+      name: product.name,
+      brand: product.brand ?? null,
+      size: product.size ?? null,
+      ean,
+      sourceUrl: product.sourceUrl ?? null,
+      categoryId: categoryId.get(product.categorySlug)!,
+      iconKey: product.iconKey ?? null,
+      searchText: searchTextOf(product),
+      home: locationId.get(`${category.home[0]}/${category.home[1]}/${bay}`)!,
+    });
+  }
+
+  // Un solo giro di lettura, poi scritture a lotti: con decine di migliaia di
+  // prodotti gli upsert uno a uno renderebbero il seed inutilizzabile.
+  const existing = new Map(
+    (await prisma.product.findMany({ select: { id: true, slug: true, name: true, categoryId: true, iconKey: true } })).map(
+      (p) => [p.slug, p],
+    ),
+  );
+
+  const toCreate = rows.filter((row) => !existing.has(row.slug));
+  const toUpdate = rows.filter((row) => {
+    const current = existing.get(row.slug);
+    return (
+      current !== undefined &&
+      (current.name !== row.name || current.categoryId !== row.categoryId || current.iconKey !== row.iconKey)
+    );
+  });
+
+  for (const chunk of chunked(toCreate, 1000)) {
+    await prisma.product.createMany({ data: chunk.map(({ home: _home, ...data }) => data) });
+  }
+
+  for (const row of toUpdate) {
+    await prisma.product.update({
+      where: { slug: row.slug },
+      data: {
+        name: row.name,
+        brand: row.brand,
+        size: row.size,
+        sourceUrl: row.sourceUrl,
+        categoryId: row.categoryId,
+        iconKey: row.iconKey,
+        searchText: row.searchText,
       },
     });
+  }
+
+  const idBySlug = new Map(
+    (await prisma.product.findMany({ select: { id: true, slug: true } })).map((p) => [p.slug, p.id]),
+  );
+
+  const placements = new Map(
+    (
+      await prisma.placement.findMany({
+        where: { storeId: store.id },
+        select: { id: true, productId: true, locationId: true, confidence: true },
+      })
+    ).map((p) => [p.productId, p]),
+  );
+
+  const newPlacements = [];
+  const moves = new Map<string, string[]>();
+
+  for (const row of rows) {
+    const productId = idBySlug.get(row.slug)!;
+    const current = placements.get(productId);
+
+    if (!current) {
+      newPlacements.push({ productId, storeId: store.id, locationId: row.home, confidence: "guessed" as const });
+      continue;
+    }
 
     // Le posizioni confermate a mano non vengono mai sovrascritte.
-    const existing = await prisma.placement.findUnique({
-      where: { productId_storeId: { productId: row.id, storeId: store.id } },
-    });
-
-    if (!existing) {
-      await prisma.placement.create({
-        data: { productId: row.id, storeId: store.id, locationId: home, confidence: "guessed" },
-      });
-      created++;
-    } else if (existing.confidence === "guessed" && existing.locationId !== home) {
-      await prisma.placement.update({ where: { id: existing.id }, data: { locationId: home } });
-      moved++;
+    if (current.confidence === "guessed" && current.locationId !== row.home) {
+      moves.set(row.home, [...(moves.get(row.home) ?? []), current.id]);
     }
+  }
+
+  for (const chunk of chunked(newPlacements, 1000)) {
+    await prisma.placement.createMany({ data: chunk });
+  }
+
+  let moved = 0;
+  for (const [locationId, ids] of moves) {
+    for (const chunk of chunked(ids, 1000)) {
+      await prisma.placement.updateMany({ where: { id: { in: chunk } }, data: { locationId } });
+      moved += chunk.length;
+    }
+  }
+
+  const created = toCreate.length;
+
+  // Il catalogo caricato e' la fonte di verita': i prodotti che non ci sono piu'
+  // vengono rimossi, tranne quelli gia' usati in una lista o con una posizione
+  // confermata a mano, che sono lavoro dell'utente e non si buttano.
+  const stale = await prisma.product.findMany({
+    where: {
+      slug: { notIn: rows.map((r) => r.slug) },
+      listItems: { none: {} },
+      placements: { none: { confidence: "confirmed" } },
+    },
+    select: { id: true },
+  });
+
+  for (const chunk of chunked(stale.map((p) => p.id), 1000)) {
+    await prisma.product.deleteMany({ where: { id: { in: chunk } } });
   }
 
   await prisma.settings.upsert({ where: { id: "singleton" }, create: {}, update: {} });
@@ -248,7 +348,7 @@ async function main() {
   console.log(
     `Seed ok: ${layout.aisles.length} corsie, ${layout.locations.length} punti di prelievo, ` +
       `${CATEGORIES.length} categorie, ${catalog.products.length} prodotti da ${catalog.source} ` +
-      `(${created} nuove posizioni, ${moved} ipotesi aggiornate).`,
+      `(${created} nuovi, ${toUpdate.length} aggiornati, ${moved} ipotesi spostate, ${stale.length} rimossi).`,
   );
 }
 

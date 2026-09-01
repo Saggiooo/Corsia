@@ -23,6 +23,7 @@ export default async function ListPage({ params }: { params: Promise<{ id: strin
       id: item.id,
       name: item.product?.name ?? item.rawText,
       size: item.product?.size ?? null,
+      note: item.note,
       qty: item.qty,
       iconKey: item.product?.iconKey ?? null,
       categoryName: item.product?.category.name ?? "Senza corsia",

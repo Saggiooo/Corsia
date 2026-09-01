@@ -175,6 +175,9 @@ export function ShopMode({ listId, listName, stops, path, checked, locations, ma
 
         <div className="mt-8">
           <h1 className="font-display text-3xl leading-tight">{stop.name}</h1>
+          {stop.note ? (
+            <p className="font-display mt-1 text-xl leading-tight text-[var(--color-signal)]">{stop.note}</p>
+          ) : null}
           <p className="mt-1 text-[var(--color-ink-3)]">
             {stop.size ?? stop.categoryName}
             {stop.qty > 1 ? ` · ${stop.qty} pezzi` : ""}

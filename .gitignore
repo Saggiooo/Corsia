@@ -72,3 +72,4 @@ Desktop.ini
 *.temp
 *.bak
 *.orig
+data/catalog.snapshot.json

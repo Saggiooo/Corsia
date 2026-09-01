@@ -54,20 +54,46 @@ npm run dev
 | `npm run dev` | Server di sviluppo |
 | `npm test` | Test del motore di routing e della planimetria |
 | `npx tsx prisma/seed.ts` | Ricarica mappa, categorie e catalogo |
-| `npx tsx scripts/scrape-coop.ts` | Riscarica il catalogo da coopshop.it |
+| `npx tsx scripts/scrape-coop.ts` | Scarica il catalogo completo da coopshop.it (opzionale) |
 | `npx tsx scripts/check-route.mts` | Calcola un percorso di prova da riga di comando |
 
 ## Catalogo
 
-Lo scraping di coopshop.it e' **offline e one-shot**: l'app non contatta mai
-quel sito a runtime, legge solo `data/catalog.snapshot.json`, che sta nel
-repository. Se il sito cambia, l'app continua a funzionare e va corretto solo
-lo script. L'importer rispetta `robots.txt` (che non vieta nulla), si presenta
-con uno User-Agent proprio e attende 350 ms fra una richiesta e l'altra.
+Il catalogo e' una **lista curata a mano** in `src/lib/store/catalog.ts`, fatta
+di prodotti generici: "Spaghetti", non "Spaghetti Barilla n.5 500 g". Tutte le
+paste stanno sullo stesso scaffale, quindi il dettaglio di marca e formato non
+serve alla posizione: lo aggiungi sulla riga della lista con la matita, che
+apre una nota libera ("Barilla mezzo kg"). La nota viaggia fino alla modalita'
+spesa, dove compare in grande sotto il nome del prodotto.
 
-Senza snapshot il seed usa la lista curata a mano in `src/lib/store/catalog.ts`
-(248 prodotti), quindi l'app e' utilizzabile anche senza mai lanciare
-l'importer.
+Per aggiungere prodotti, una riga per prodotto sotto la sua categoria:
+
+```ts
+const CATALOG: Record<string, Row[]> = {
+  "pasta-riso": [
+    ["Spaghetti", "spaghetti", "500 g"],   // [nome, icona?, formato?, marca?]
+    ["Riso Carnaroli", "rice", "1 kg"],
+  ],
+};
+```
+
+L'icona e' facoltativa: senza, il prodotto usa quella della sua categoria. Le
+chiavi disponibili stanno in `src/components/icons/paths.tsx`. `npm test`
+verifica che categorie e icone esistano e che non ci siano doppioni, cosi' un
+refuso si vede subito.
+
+### Catalogo completo Coop (opzionale)
+
+`scripts/scrape-coop.ts` scarica l'intero catalogo di coopshop.it (~22.000
+prodotti) in `data/catalog.snapshot.json`, e `npx tsx prisma/seed.ts
+--from-snapshot` lo carica al posto della lista curata. Lo scraping e'
+**offline e one-shot**: l'app non contatta mai quel sito a runtime. L'importer
+rispetta `robots.txt` (che non vieta nulla), si presenta con uno User-Agent
+proprio e attende 350 ms fra una richiesta e l'altra.
+
+Il seed considera il catalogo caricato la fonte di verita': i prodotti spariti
+vengono rimossi, tranne quelli gia' usati in una lista o con una posizione
+confermata a mano.
 
 ## Struttura
 

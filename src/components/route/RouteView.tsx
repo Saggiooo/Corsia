@@ -119,6 +119,9 @@ export function RouteView({ listId, mode, distanceM, estMinutes, snapshot, path,
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{stop.name}</p>
+                    {stop.note ? (
+                      <p className="truncate text-[13px] text-[var(--color-signal)]">{stop.note}</p>
+                    ) : null}
                     <p className="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">
                       {stop.locationLabel}
                       {stop.size ? ` · ${stop.size}` : ""}
@@ -150,6 +153,9 @@ export function RouteView({ listId, mode, distanceM, estMinutes, snapshot, path,
                   <ProductAvatar iconKey="basket" colorToken="pantry" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{orphan.name}</p>
+                    {orphan.note ? (
+                      <p className="truncate text-[13px] text-[var(--color-signal)]">{orphan.note}</p>
+                    ) : null}
                     <p className="tag mt-0.5 text-[var(--color-ink-3)]">
                       {orphan.reason === "irraggiungibile" ? "Non raggiungibile sulla mappa" : "Posizione sconosciuta"}
                     </p>
