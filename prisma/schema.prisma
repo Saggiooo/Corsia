@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FixtureKind {
+  shelf
+  counter
+  fridge
+  freezer
+  checkout
+  entrance
+  wall
+  promo
+}
+
+enum PickClass {
+  normal
+  fragile
+  chilled
+  frozen
+}
+
+enum Confidence {
+  guessed
+  confirmed
+}
+
+enum ListStatus {
+  draft
+  routed
+  shopping
+  done
+}
+
+enum RouteMode {
+  shortest
+  coldchain
+}
+
+enum Side {
+  L
+  R
+}
+
+/// Un supermercato. La planimetria e' una griglia di celle da `cellSizeCm`.
+/// `grid` e' un array di stringhe (una per riga): '.' percorribile, '#' occupata.
+model Store {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  name       String
+  address    String?
+  gridW      Int
+  gridH      Int
+  cellSizeCm Int      @default(50)
+  grid       Json
+  entranceX  Int
+  entranceY  Int
+  checkoutX  Int
+  checkoutY  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  aisles     Aisle[]
+  fixtures   Fixture[]
+  locations  Location[]
+  placements Placement[]
+  lists      List[]
+}
+
+/// Corsia. `sequence` e' l'ordine naturale di percorrenza, usato come seed
+/// dell'euristica "serpentina" del routing.
+model Aisle {
+  id       String  @id @default(cuid())
+  storeId  String
+  number   Int
+  name     String
+  sequence Int
+  vertical Boolean @default(true)
+
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  fixtures  Fixture[]
+  locations Location[]
+
+  @@unique([storeId, number])
+  @@index([storeId, sequence])
+}
+
+/// Blocco fisico disegnato sulla mappa. `cells` e' un array di [x, y].
+model Fixture {
+  id         String      @id @default(cuid())
+  storeId    String
+  aisleId    String?
+  kind       FixtureKind
+  label      String?
+  colorToken String?
+  cells      Json
+
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  aisle     Aisle?     @relation(fields: [aisleId], references: [id], onDelete: SetNull)
+  locations Location[]
+
+  @@index([storeId])
+}
+
+/// Punto in cui si prende un prodotto: corsia + lato + campata.
+/// `accessX/accessY` e' la cella percorribile davanti allo scaffale.
+model Location {
+  id        String  @id @default(cuid())
+  storeId   String
+  aisleId   String
+  fixtureId String?
+  side      Side
+  bay       Int
+  accessX   Int
+  accessY   Int
+  label     String?
+
+  store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  aisle      Aisle       @relation(fields: [aisleId], references: [id], onDelete: Cascade)
+  fixture    Fixture?    @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  placements Placement[]
+  categories Category[]
+
+  @@unique([storeId, aisleId, side, bay])
+  @@index([storeId])
+}
+
+model Category {
+  id         String    @id @default(cuid())
+  slug       String    @unique
+  name       String
+  iconKey    String
+  colorToken String
+  pickClass  PickClass @default(normal)
+  sortOrder  Int       @default(0)
+  parentId   String?
+
+  /// Posizione ipotizzata per i prodotti di questa categoria (seed).
+  defaultLocationId String?
+
+  parent          Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Category[] @relation("CategoryTree")
+  defaultLocation Location?  @relation(fields: [defaultLocationId], references: [id], onDelete: SetNull)
+  products        Product[]
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  brand       String?
+  size        String?
+  ean         String? @unique
+  categoryId  String
+  iconKey     String?
+  sourceUrl   String?
+  /// Nome normalizzato per la ricerca fuzzy (pg_trgm).
+  searchText  String
+  timesBought Int     @default(0)
+
+  category   Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  placements Placement[]
+  listItems  ListItem[]
+
+  @@index([categoryId])
+}
+
+/// Dove sta un prodotto in un negozio. Separato da Product cosi' un
+/// re-import del catalogo non cancella le posizioni mappate a mano.
+model Placement {
+  id         String     @id @default(cuid())
+  productId  String
+  storeId    String
+  locationId String
+  level      Int?
+  confidence Confidence @default(guessed)
+  updatedAt  DateTime   @updatedAt
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, storeId])
+  @@index([locationId])
+}
+
+model List {
+  id          String     @id @default(cuid())
+  storeId     String
+  name        String
+  status      ListStatus @default(draft)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  store Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items ListItem[]
+  route Route?
+
+  @@index([storeId, createdAt])
+}
+
+model ListItem {
+  id        String    @id @default(cuid())
+  listId    String
+  productId String?
+  rawText   String
+  qty       Float     @default(1)
+  unit      String?
+  note      String?
+  checked   Boolean   @default(false)
+  checkedAt DateTime?
+  sortIndex Int       @default(0)
+
+  list    List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([listId])
+}
+
+/// Percorso calcolato. `stops` e `path` sono snapshot: restano validi
+/// anche se la mappa viene modificata durante la spesa.
+model Route {
+  id         String    @id @default(cuid())
+  listId     String    @unique
+  mode       RouteMode
+  stops      Json
+  path       Json
+  distanceM  Int
+  estMinutes Int
+  computedAt DateTime  @default(now())
+
+  list List @relation(fields: [listId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id             String    @id @default("singleton")
+  routeMode      RouteMode @default(coldchain)
+  walkSpeedMs    Float     @default(1.1)
+  secondsPerPick Int       @default(20)
+  haptics        Boolean   @default(true)
+}
