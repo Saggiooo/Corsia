@@ -7,3 +7,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Catalogo prodotti
+
+- Mantieni invariato il catalogo storico in `CATALOG`; inserisci le nuove voci curate in `EXPANSION`.
+- I termini equivalenti di ricerca (vitigni, stili di birra e nomi comuni) appartengono a `SEARCH_ALIASES`, così puntano a un solo prodotto canonico.
+- Dopo modifiche al catalogo esegui `npm run db:seed`: le posizioni confermate manualmente non devono essere sovrascritte.

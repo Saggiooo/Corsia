@@ -249,7 +249,11 @@ async function main() {
   // Un solo giro di lettura, poi scritture a lotti: con decine di migliaia di
   // prodotti gli upsert uno a uno renderebbero il seed inutilizzabile.
   const existing = new Map(
-    (await prisma.product.findMany({ select: { id: true, slug: true, name: true, categoryId: true, iconKey: true } })).map(
+    (
+      await prisma.product.findMany({
+        select: { id: true, slug: true, name: true, categoryId: true, iconKey: true, searchText: true },
+      })
+    ).map(
       (p) => [p.slug, p],
     ),
   );
@@ -259,7 +263,10 @@ async function main() {
     const current = existing.get(row.slug);
     return (
       current !== undefined &&
-      (current.name !== row.name || current.categoryId !== row.categoryId || current.iconKey !== row.iconKey)
+      (current.name !== row.name ||
+        current.categoryId !== row.categoryId ||
+        current.iconKey !== row.iconKey ||
+        current.searchText !== row.searchText)
     );
   });
 

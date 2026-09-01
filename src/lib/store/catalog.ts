@@ -26,6 +26,7 @@ export const CATEGORIES: CategorySeed[] = [
   { slug: "dolci-snack", name: "Dolci e snack", iconKey: "cookie", colorToken: "sweet", pickClass: "normal", home: [4, "R", 1] },
   { slug: "caffe-the", name: "Caffè, tè e zucchero", iconKey: "coffee", colorToken: "breakfast", pickClass: "normal", home: [5, "L", 1] },
   { slug: "aperitivo", name: "Aperitivo e salati", iconKey: "chips", colorToken: "sweet", pickClass: "normal", home: [5, "R", 1] },
+  { slug: "aperitivi-cocktail", name: "Aperitivi e cocktail", iconKey: "wine", colorToken: "drinks", pickClass: "normal", home: [7, "L", 1] },
   { slug: "bevande", name: "Bevande", iconKey: "bottle", colorToken: "drinks", pickClass: "normal", home: [6, "L", 1] },
   { slug: "acqua", name: "Acqua", iconKey: "water", colorToken: "drinks", pickClass: "normal", home: [6, "R", 1] },
   { slug: "vini-birre", name: "Vini e birre", iconKey: "wine", colorToken: "drinks", pickClass: "normal", home: [7, "L", 1] },
@@ -45,6 +46,7 @@ export type ProductSeed = {
   iconKey?: string;
   size?: string;
   brand?: string;
+  aliases?: readonly string[];
   ean?: string;
   sourceUrl?: string;
 };
@@ -355,9 +357,320 @@ const CATALOG: Record<string, Row[]> = {
   ],
 };
 
-export const PRODUCTS: ProductSeed[] = Object.entries(CATALOG).flatMap(([categorySlug, rows]) =>
-  rows.map(([name, iconKey, size, brand]) => ({ name, categorySlug, iconKey, size, brand })),
+/**
+ * Ampliamento curato del catalogo base. Le voci originali sopra restano
+ * inalterate; qui aggiungiamo varieta' reali senza moltiplicare i soli formati.
+ */
+const EXPANSION: Record<string, Row[]> = {
+  ortofrutta: [
+    ["Cavolfiore", "broccoli", "1 pz"],
+    ["Cavolo cappuccio", "broccoli", "1 pz"],
+    ["Verza", "broccoli", "1 pz"],
+    ["Porri", "onion", "500 g"],
+    ["Cetrioli", "zucchini", "500 g"],
+    ["Radicchio", "salad", "1 pz"],
+    ["Zucca", "potato", "1 kg"],
+    ["Fagiolini", "beans", "500 g"],
+    ["Asparagi", "salad", "500 g"],
+    ["Pesche", "apple", "1 kg"],
+    ["Albicocche", "orange", "500 g"],
+    ["Ciliegie", "strawberry", "500 g"],
+    ["Mandarini", "orange", "1 kg"],
+    ["Ananas", "orange", "1 pz"],
+    ["Melone", "orange", "1 pz"],
+  ],
+  panetteria: [
+    ["Ciabatta", "bread", "1 pz"],
+    ["Rosetta", "bread", "4 pz"],
+    ["Pane di segale", "bread", "500 g"],
+    ["Pane ai cereali", "bread", "500 g"],
+    ["Panini al latte", "bread", "8 pz"],
+    ["Tortillas", "flatbread", "6 pz"],
+    ["Pizza bianca", "focaccia", "300 g"],
+    ["Pangrattato", "bread", "500 g"],
+  ],
+  macelleria: [
+    ["Lonza di maiale", "pork", "500 g"],
+    ["Filetto di maiale", "pork", "500 g"],
+    ["Costine di maiale", "pork", "800 g"],
+    ["Spezzatino di manzo", "beef", "500 g"],
+    ["Polpette di carne", "beef", "400 g"],
+    ["Coniglio", "meat", "1 kg"],
+    ["Pollo intero", "chicken", "1,2 kg"],
+    ["Fettine di vitello", "beef", "400 g"],
+  ],
+  pescheria: [
+    ["Salmone affumicato", "salmon", "100 g"],
+    ["Trota affumicata", "fish", "100 g"],
+    ["Carpaccio di salmone", "salmon", "100 g"],
+    ["Tonno fresco", "fish", "300 g"],
+    ["Pesce spada", "fish", "300 g"],
+    ["Calamari", "fish", "500 g"],
+    ["Polpo", "fish", "800 g"],
+    ["Seppie", "fish", "500 g"],
+    ["Alici", "fish", "300 g"],
+    ["Sardine", "fish", "300 g"],
+    ["Filetti di sgombro", "fish", "300 g"],
+    ["Insalata di mare", "mussel", "300 g"],
+  ],
+  latticini: [
+    ["Latte scremato", "milk", "1 L"],
+    ["Kefir", "yogurt", "500 ml"],
+    ["Yogurt da bere", "yogurt", "200 ml"],
+    ["Yogurt senza lattosio", "yogurt", "2x125 g"],
+    ["Panna fresca", "cream", "250 ml"],
+    ["Feta", "cheese", "200 g"],
+    ["Provola", "cheese", "250 g"],
+    ["Scamorza", "cheese", "250 g"],
+    ["Formaggio caprino", "cheese", "150 g"],
+    ["Fiocchi di latte", "cheese", "200 g"],
+  ],
+  salumi: [
+    ["Coppa", "ham", "100 g"],
+    ["Fesa di tacchino", "ham", "100 g"],
+    ["Arrosto di pollo affettato", "ham", "100 g"],
+    ["Salame piccante", "salami", "150 g"],
+    ["Soppressata", "salami", "150 g"],
+    ["Taleggio", "cheese", "200 g"],
+    ["Pecorino", "parmesan", "250 g"],
+    ["Emmental", "cheese", "250 g"],
+  ],
+  surgelati: [
+    ["Verdure grigliate surgelate", "frozen-peas", "450 g"],
+    ["Fagiolini surgelati", "frozen-peas", "450 g"],
+    ["Broccoli surgelati", "frozen-peas", "450 g"],
+    ["Funghi surgelati", "frozen-peas", "450 g"],
+    ["Lasagne surgelate", "pasta", "500 g"],
+    ["Cannelloni surgelati", "pasta", "500 g"],
+    ["Nuggets di pollo surgelati", "chicken", "400 g"],
+    ["Filetti di merluzzo surgelati", "fish", "400 g"],
+    ["Sorbetto al limone", "ice-cream", "500 ml"],
+    ["Frutti di bosco surgelati", "strawberry", "450 g"],
+  ],
+  "pasta-riso": [
+    ["Linguine", "spaghetti", "500 g"],
+    ["Tagliatelle", "pasta", "500 g"],
+    ["Tortellini", "pasta", "250 g"],
+    ["Ravioli", "pasta", "250 g"],
+    ["Polenta", "rice", "500 g"],
+    ["Semolino", "flour", "500 g"],
+    ["Riso integrale", "rice", "1 kg"],
+    ["Bulgur", "rice", "500 g"],
+  ],
+  conserve: [
+    ["Capperi", "jar", "100 g"],
+    ["Cetriolini sott'aceto", "jar", "300 g"],
+    ["Peperoni sott'olio", "jar", "280 g"],
+    ["Melanzane sott'olio", "jar", "280 g"],
+    ["Salsa alle olive", "sauce", "190 g"],
+    ["Ragù vegetale", "tomato-sauce", "400 g"],
+    ["Confettura di fragole", "jam", "340 g"],
+    ["Sciroppo d'acero", "honey", "250 ml"],
+  ],
+  "olio-condimenti": [
+    ["Olio di mais", "oil", "1 L"],
+    ["Olio di arachidi", "oil", "1 L"],
+    ["Aceto di mele", "vinegar", "500 ml"],
+    ["Salsa barbecue", "sauce", "250 ml"],
+    ["Salsa piccante", "sauce", "150 ml"],
+    ["Succo di limone", "lemon", "200 ml"],
+  ],
+  scatolame: [
+    ["Fagioli cannellini", "beans", "400 g"],
+    ["Fave in scatola", "beans", "400 g"],
+    ["Zuppa di cereali", "can", "400 g"],
+    ["Acciughe sott'olio", "tuna-can", "80 g"],
+    ["Salmone in scatola", "tuna-can", "150 g"],
+    ["Olive nere", "olive", "300 g"],
+  ],
+  colazione: [
+    ["Granola", "muesli", "375 g"],
+    ["Riso soffiato", "cereal", "300 g"],
+    ["Biscotti al cacao", "biscuit", "400 g"],
+    ["Biscotti secchi", "biscuit", "500 g"],
+    ["Brioche", "snack-cake", "6 pz"],
+    ["Crema di arachidi", "jam", "350 g"],
+    ["Sciroppo d'agave", "honey", "250 ml"],
+  ],
+  "dolci-snack": [
+    ["Cioccolato bianco", "chocolate", "100 g"],
+    ["Praline", "chocolate", "200 g"],
+    ["Marshmallow", "candy", "200 g"],
+    ["Liquirizia", "candy", "100 g"],
+    ["Crostata", "cake", "400 g"],
+    ["Pan di Spagna", "cake", "300 g"],
+    ["Gelatine alla frutta", "candy", "200 g"],
+  ],
+  "caffe-the": [
+    ["Caffè decaffeinato", "coffee", "250 g"],
+    ["Tè Earl Grey", "tea", "25 filtri"],
+    ["Infuso ai frutti rossi", "tea", "20 filtri"],
+    ["Tisana digestiva", "tea", "20 filtri"],
+    ["Dolcificante", "sugar", "100 compresse"],
+  ],
+  aperitivo: [
+    ["Nachos", "chips", "150 g"],
+    ["Cracker integrali", "cracker", "250 g"],
+    ["Grissini al sesamo", "breadstick", "250 g"],
+    ["Lupini", "beans", "300 g"],
+    ["Anacardi salati", "peanut", "150 g"],
+    ["Mix aperitivo", "peanut", "200 g"],
+  ],
+  "aperitivi-cocktail": [
+    ["Aperol", "wine", "70 cl"],
+    ["Campari", "wine", "70 cl"],
+    ["Campari Soda", "wine", "10x10 cl"],
+    ["Crodino", "wine", "10x10 cl"],
+    ["Sanbittèr", "wine", "10x10 cl"],
+    ["Select", "wine", "70 cl"],
+    ["Cynar", "wine", "70 cl"],
+    ["Martini Rosso", "wine", "1 L"],
+    ["Martini Bianco", "wine", "1 L"],
+    ["Gin", "wine", "70 cl"],
+    ["Vodka", "wine", "70 cl"],
+    ["Rum bianco", "wine", "70 cl"],
+    ["Soda per cocktail", "soda", "1 L"],
+    ["Sciroppo di granatina", "soda", "500 ml"],
+    ["Cocktail analcolico", "wine", "750 ml"],
+  ],
+  bevande: [
+    ["Coca-Cola Zero", "soda", "1,5 L"],
+    ["Pepsi", "soda", "1,5 L"],
+    ["Fanta", "soda", "1,5 L"],
+    ["Sprite", "soda", "1,5 L"],
+    ["Chinò Sanpellegrino", "soda", "1,2 L"],
+    ["Estathé al limone", "soda", "1,5 L"],
+    ["Estathé alla pesca", "soda", "1,5 L"],
+    ["Red Bull", "soda", "250 ml"],
+    ["Monster Energy", "soda", "500 ml"],
+    ["Schweppes tonica", "soda", "1 L"],
+    ["Schweppes al limone", "soda", "1 L"],
+    ["Ginger ale", "soda", "1 L"],
+    ["Limonata", "soda", "1,5 L"],
+    ["Gassosa", "soda", "1,5 L"],
+    ["Succo di mela", "juice", "1 L"],
+    ["Succo di pera", "juice", "1 L"],
+    ["Acqua tonica", "soda", "1 L"],
+    ["Succo ACE", "juice", "1 L"],
+    ["Succo multifrutta", "juice", "1 L"],
+  ],
+  acqua: [
+    ["Acqua oligominerale", "water", "6x1,5 L"],
+    ["Acqua aromatizzata al limone", "water", "1,5 L"],
+    ["Acqua aromatizzata alla frutta", "water", "1,5 L"],
+  ],
+  "vini-birre": [
+    ["Vino rosso", "wine", "750 ml"],
+    ["Vino bianco", "wine", "750 ml"],
+    ["Vino rosato", "wine", "750 ml"],
+    ["Birra rossa", "beer", "6x33 cl"],
+    ["Birra scura", "beer", "6x33 cl"],
+    ["Birra analcolica", "beer", "6x33 cl"],
+  ],
+  "mondo-bimbo": [
+    ["Pastina per bambini", "baby-food", "320 g"],
+    ["Crema di riso per bambini", "baby-food", "200 g"],
+    ["Purea di verdure per bambini", "baby-food", "2x100 g"],
+  ],
+  vegetariano: [
+    ["Tempeh", "tofu", "200 g"],
+    ["Bevanda d'avena", "soy-milk", "1 L"],
+    ["Burger di legumi", "veg-burger", "2 pz"],
+    ["Falafel", "veg-burger", "200 g"],
+    ["Edamame", "beans", "300 g"],
+    ["Lievito alimentare", "flour", "100 g"],
+  ],
+  "frutta-secca": [
+    ["Anacardi", "nut", "150 g"],
+    ["Pinoli", "nut", "100 g"],
+    ["Prugne secche", "raisin", "250 g"],
+    ["Semi di girasole", "seed", "150 g"],
+    ["Pistacchi non salati", "nut", "150 g"],
+  ],
+  spezie: [
+    ["Rosmarino", "herb", "20 g"],
+    ["Timo", "herb", "20 g"],
+    ["Curcuma", "pepper-spice", "40 g"],
+    ["Cumino", "pepper-spice", "40 g"],
+    ["Peperoncino", "pepper-spice", "30 g"],
+    ["Vaniglia", "herb", "2 bacche"],
+  ],
+};
+
+const SEARCH_ALIASES: Record<string, readonly string[]> = {
+  "Vino rosso": [
+    "Chianti",
+    "Montepulciano d'Abruzzo",
+    "Barbera",
+    "Barbaresco",
+    "Barolo",
+    "Brunello di Montalcino",
+    "Nero d'Avola",
+    "Primitivo",
+    "Amarone",
+    "Valpolicella",
+    "Cannonau",
+    "Morellino",
+    "Cabernet Sauvignon",
+    "Merlot",
+    "Pinot nero",
+  ],
+  "Vino bianco": [
+    "Chardonnay",
+    "Pinot grigio",
+    "Sauvignon",
+    "Vermentino",
+    "Falanghina",
+    "Greco di Tufo",
+    "Gewürztraminer",
+    "Ribolla gialla",
+    "Soave",
+  ],
+  "Vino rosato": ["Rosé", "Cerasuolo", "Chiaretto"],
+  Prosecco: ["Valdobbiadene", "Glera", "Prosecco brut", "Prosecco extra dry", "aperitivo", "spritz"],
+  "Birra chiara": [
+    "lager",
+    "pils",
+    "pilsner",
+    "helles",
+    "blanche",
+    "weiss",
+    "Moretti",
+    "Peroni",
+    "Ichnusa",
+    "Heineken",
+    "Corona",
+  ],
+  "Birra artigianale": ["IPA", "APA", "India Pale Ale", "saison", "craft beer"],
+  "Birra rossa": ["birra ambrata", "red ale", "amber ale"],
+  "Birra scura": ["stout", "porter", "dunkel", "Guinness"],
+  "Birra analcolica": ["birra zero", "birra senza alcol", "alcohol free beer"],
+};
+
+const PRODUCT_NAME_BY_ALIAS = new Map(
+  Object.entries(SEARCH_ALIASES).flatMap(([name, aliases]) =>
+    aliases.map((alias) => [normalizeSearchText(alias), name] as const),
+  ),
 );
+
+export function productNameForAlias(value: string): string | undefined {
+  return PRODUCT_NAME_BY_ALIAS.get(normalizeSearchText(value));
+}
+
+function rowsOf(catalog: Record<string, Row[]>): ProductSeed[] {
+  return Object.entries(catalog).flatMap(([categorySlug, rows]) =>
+    rows.map(([name, iconKey, size, brand]) => ({
+      name,
+      categorySlug,
+      iconKey,
+      size,
+      brand,
+      aliases: SEARCH_ALIASES[name],
+    })),
+  );
+}
+
+export const PRODUCTS: ProductSeed[] = [...rowsOf(CATALOG), ...rowsOf(EXPANSION)];
 
 /** Slug stabile e testo normalizzato per la ricerca fuzzy. */
 export function slugify(value: string): string {
@@ -369,11 +682,20 @@ export function slugify(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function searchTextOf(product: { name: string; brand?: string; size?: string }): string {
-  return [product.name, product.brand]
-    .filter(Boolean)
-    .join(" ")
+export function normalizeSearchText(value: string): string {
+  return value
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function searchTextOf(product: {
+  name: string;
+  brand?: string;
+  size?: string;
+  aliases?: readonly string[];
+}): string {
+  return normalizeSearchText([product.name, product.brand, ...(product.aliases ?? [])].filter(Boolean).join(" "));
 }

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { MapFixture, MapLabel } from "@/components/map/StoreMap";
+import { normalizeSearchText, productNameForAlias } from "@/lib/store/catalog";
 
 export const STORE_SLUG = "extracoop-villanova";
 
@@ -90,8 +91,9 @@ export type SearchHit = {
  * `similarity()` resta solo nell'ordinamento, dove l'indice non serve.
  */
 export async function searchProducts(query: string, limit = 24): Promise<SearchHit[]> {
-  const term = query.trim().toLowerCase();
+  const term = normalizeSearchText(query);
   if (term.length < 2) return [];
+  const preferredName = productNameForAlias(query) ?? "";
 
   return prisma.$queryRaw<SearchHit[]>`
     SELECT p.id,
@@ -112,7 +114,8 @@ export async function searchProducts(query: string, limit = 24): Promise<SearchH
     LEFT JOIN "Aisle" a ON a.id = l."aisleId"
     WHERE p."searchText" ILIKE '%' || ${term} || '%'
        OR p."searchText" % ${term}
-    ORDER BY (p."searchText" ILIKE ${term} || '%') DESC,
+    ORDER BY (p.name = ${preferredName}) DESC,
+             (p."searchText" ILIKE ${term} || '%') DESC,
              similarity(p."searchText", ${term}) DESC,
              p."timesBought" DESC,
              p.name ASC
