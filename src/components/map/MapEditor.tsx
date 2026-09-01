@@ -2,26 +2,45 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveMap, setStoreStatus, type CellPaint } from "@/app/actions";
+import Link from "next/link";
+import { generateAisles, saveMap, setStoreStatus, type CellPaint } from "@/app/actions";
 import { mergeCells } from "@/lib/map/shapes";
 
 type Tool = {
+  id: string;
   kind: string;
   label: string;
-  color: string;
+  /// Nome scritto sul blocco e usato come nome della corsia.
+  name?: string;
+  color?: string;
+  swatch: string;
 };
 
+/**
+ * La palette e' fatta di reparti, non di forme generiche: dipingendo
+ * "Ortofrutta" il blocco nasce gia' col suo colore e col suo nome, che poi
+ * diventa il nome della corsia quando si generano i punti di prelievo.
+ */
 const TOOLS: Tool[] = [
-  { kind: "shelf", label: "Scaffale", color: "var(--color-paper-3)" },
-  { kind: "counter", label: "Banco", color: "var(--meat-soft)" },
-  { kind: "fridge", label: "Frigo", color: "var(--dairy-soft)" },
-  { kind: "freezer", label: "Surgelati", color: "var(--frozen-soft)" },
-  { kind: "checkout", label: "Casse", color: "var(--checkout-soft)" },
-  { kind: "promo", label: "Promo", color: "var(--sweet-soft)" },
-  { kind: "wall", label: "Muro", color: "var(--color-ink-3)" },
-  { kind: "floor", label: "Gomma", color: "var(--color-paper-2)" },
+  { id: "shelf", kind: "shelf", label: "Scaffale", swatch: "var(--color-paper-3)" },
+  { id: "ortofrutta", kind: "counter", label: "Ortofrutta", name: "Ortofrutta", color: "produce", swatch: "var(--produce-soft)" },
+  { id: "forno", kind: "counter", label: "Forno", name: "Forno", color: "bakery", swatch: "var(--bakery-soft)" },
+  { id: "macelleria", kind: "counter", label: "Macelleria", name: "Macelleria", color: "meat", swatch: "var(--meat-soft)" },
+  { id: "pescheria", kind: "counter", label: "Pescheria", name: "Pescheria", color: "fish", swatch: "var(--fish-soft)" },
+  { id: "salumi", kind: "counter", label: "Salumi", name: "Salumi e formaggi", color: "deli", swatch: "var(--deli-soft)" },
+  { id: "latticini", kind: "fridge", label: "Frigo", name: "Latticini", color: "dairy", swatch: "var(--dairy-soft)" },
+  { id: "surgelati", kind: "freezer", label: "Surgelati", name: "Surgelati", color: "frozen", swatch: "var(--frozen-soft)" },
+  { id: "bevande", kind: "shelf", label: "Bevande", name: "Bevande", color: "drinks", swatch: "var(--drinks-soft)" },
+  { id: "casa", kind: "shelf", label: "Casa", name: "Cura della casa", color: "home", swatch: "var(--home-soft)" },
+  { id: "promo", kind: "promo", label: "Promo", name: "Promozioni", color: "sweet", swatch: "var(--sweet-soft)" },
+  { id: "checkout", kind: "checkout", label: "Casse", color: "checkout", swatch: "var(--checkout-soft)" },
+  { id: "wall", kind: "wall", label: "Muro", swatch: "var(--color-ink-3)" },
+  { id: "floor", kind: "floor", label: "Gomma", swatch: "var(--color-paper-2)" },
 ];
 
+const BY_ID = new Map(TOOLS.map((tool) => [tool.id, tool]));
+
+/** Aspetto dei blocchi senza colore di reparto. */
 const FILL: Record<string, string> = {
   shelf: "var(--color-paper-3)",
   counter: "var(--meat-soft)",
@@ -64,13 +83,15 @@ export function MapEditor({
   // Valore = "tipo::colore". Il colore conserva la tinta di reparto originale
   // dei blocchi che non tocchi.
   const [painted, setPainted] = useState<Map<string, string>>(
-    () => new Map(cells.map((c) => [`${c.x},${c.y}`, `${c.kind}::${c.color ?? ""}`])),
+    () => new Map(cells.map((c) => [`${c.x},${c.y}`, `${c.kind}::${c.color ?? ""}::${c.label ?? ""}`])),
   );
   const [tool, setTool] = useState<string | null>(null);
   const [markers, setMarkers] = useState({ entrance, checkout });
   const [placing, setPlacing] = useState<"entrance" | "checkout" | null>(null);
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
   const [report, setReport] = useState<{ blocked: string[]; unreachable: string[] } | null>(null);
+  const [generated, setGenerated] = useState<string | null>(null);
+  const [confirmWipe, setConfirmWipe] = useState<number | null>(null);
   const [saving, startSaving] = useTransition();
   const router = useRouter();
 
@@ -87,8 +108,8 @@ export function MapEditor({
       byStyle.set(style, [...(byStyle.get(style) ?? []), [x, y]]);
     }
     return [...byStyle.entries()].map(([style, list]) => {
-      const [kind, color] = style.split("::");
-      return { style, kind, color, rects: mergeCells(list) };
+      const [kind, color, label] = style.split("::");
+      return { style, kind, color, label, rects: mergeCells(list) };
     });
   }, [painted]);
 
@@ -118,8 +139,9 @@ export function MapEditor({
     setPainted((current) => {
       const next = new Map(current);
       const key = `${cell.x},${cell.y}`;
-      if (tool === "floor") next.delete(key);
-      else next.set(key, `${tool}::`);
+      const selected = BY_ID.get(tool);
+      if (!selected || selected.kind === "floor") next.delete(key);
+      else next.set(key, `${selected.kind}::${selected.color ?? ""}::${selected.name ?? ""}`);
       return next;
     });
   };
@@ -169,8 +191,8 @@ export function MapEditor({
     startSaving(async () => {
       const payload: CellPaint[] = [...painted].map(([key, style]) => {
         const [x, y] = key.split(",").map(Number);
-        const [kind, color] = style.split("::");
-        return { x, y, kind, color: color || null };
+        const [kind, color, label] = style.split("::");
+        return { x, y, kind, color: color || null, label: label || null };
       });
 
       const result = await saveMap({
@@ -182,6 +204,25 @@ export function MapEditor({
 
       setReport(result);
       router.refresh();
+    });
+
+  const generate = (force: boolean) =>
+    startSaving(async () => {
+      const result = await generateAisles(storeId, force);
+      setConfirmWipe(null);
+
+      if (result.ok) {
+        setGenerated(`${result.aisles} corsie e ${result.locations} punti di prelievo.`);
+        return;
+      }
+
+      if (result.reason === "placements") {
+        setConfirmWipe(result.placements);
+        setGenerated(null);
+        return;
+      }
+
+      setGenerated("Nessun blocco con un lato raggiungibile: disegna prima scaffali e banchi.");
     });
 
   const zoom = (factor: number) =>
@@ -211,6 +252,24 @@ export function MapEditor({
 
             {shapes.map((shape) => (
               <g key={shape.style}>
+                {shape.label &&
+                  shape.rects
+                    .filter((r) => r.w >= 3 || r.h >= 3)
+                    .map((r, i) => (
+                      <text
+                        key={`label-${i}`}
+                        x={r.x + r.w / 2}
+                        y={r.y + r.h / 2}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={Math.min(1.4, Math.max(0.8, Math.min(r.w, r.h) * 0.5))}
+                        fontWeight={700}
+                        fill="var(--color-ink-2)"
+                        style={{ fontFamily: "var(--font-display)", pointerEvents: "none" }}
+                      >
+                        {shape.label}
+                      </text>
+                    ))}
                 {shape.rects.map((r, i) => (
                   <rect
                     key={i}
@@ -307,17 +366,17 @@ export function MapEditor({
 
           {TOOLS.map((t) => (
             <button
-              key={t.kind}
+              key={t.id}
               type="button"
-              onClick={() => setTool(t.kind)}
+              onClick={() => setTool(t.id)}
               className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium whitespace-nowrap"
               style={
-                tool === t.kind
+                tool === t.id
                   ? { background: "var(--color-ink)", color: "var(--color-paper)", borderColor: "transparent" }
                   : { borderColor: "var(--color-line)" }
               }
             >
-              <span className="h-3 w-3 rounded-[4px]" style={{ background: t.color }} />
+              <span className="h-3 w-3 rounded-[4px]" style={{ background: t.swatch }} />
               {t.label}
             </button>
           ))}
@@ -346,6 +405,49 @@ export function MapEditor({
         >
           {saving ? "Salvo…" : `Salva la mappa di ${storeName}`}
         </button>
+
+        {generated && (
+          <p className="mt-2 rounded-2xl bg-[var(--color-brand-soft)] px-4 py-2.5 text-sm text-[var(--color-brand)]">
+            {generated}{" "}
+            <Link href={`/admin/corsie?negozio=${storeId}`} className="underline">
+              Dai i nomi alle corsie
+            </Link>
+          </p>
+        )}
+
+        {confirmWipe !== null ? (
+          <div className="mt-2 rounded-2xl bg-[var(--color-signal-soft)] p-3 text-sm text-[var(--color-signal)]">
+            <p>
+              Rigenerare cancella {confirmWipe} posizioni di prodotto già assegnate in questo
+              supermercato. Continuo?
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => generate(true)}
+                className="rounded-full bg-[var(--color-signal)] px-4 py-2 text-[var(--color-paper)]"
+              >
+                Sì, rigenera
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmWipe(null)}
+                className="rounded-full border border-[var(--color-signal)] px-4 py-2"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => generate(false)}
+            className="mt-2 w-full rounded-full border border-[var(--color-ink)] py-2.5 text-sm font-medium text-[var(--color-ink)] disabled:opacity-60"
+          >
+            Genera corsie e punti di prelievo
+          </button>
+        )}
 
         <button
           type="button"

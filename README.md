@@ -277,15 +277,37 @@ ogni "Preso".
 Le tappe che condividono lo stesso scaffale diventano un pin solo con
 l'intervallo ("5–6"): disegnate una sopra l'altra sarebbero illeggibili.
 
-## Modificare la mappa
+## Mappare un supermercato
 
-`/mappa` mostra la planimetria, `/mappa/modifica` la fa modificare: scegli uno
-strumento (scaffale, banco, frigo, surgelati, casse, muro, gomma) e dipingi con
-il dito; con "Sposta" trascini e con i tasti + / − zoomi. Al salvataggio la
-griglia di percorribilita' viene ricalcolata e i blocchi ricostruiti
-raggruppando le celle contigue; se qualche punto di prelievo finisce sotto un
-blocco o diventa irraggiungibile dall'ingresso, il salvataggio lo dice invece
-di nasconderlo.
+Tre passi, tutti da `/admin`.
+
+**1. Disegna la planimetria.** `Planimetrie` → scegli il supermercato. La
+palette e' fatta di reparti, non di forme generiche: dipingendo "Ortofrutta" il
+blocco nasce col suo colore e col suo nome, che diventera' il nome della
+corsia. Con "Sposta" trascini, coi tasti + / − zoomi. Al salvataggio la griglia
+di percorribilita' viene ricalcolata e i blocchi ricostruiti raggruppando le
+celle contigue dello stesso tipo, colore e nome.
+
+**2. Genera corsie e punti di prelievo.** Il pulsante nell'editor ricava
+entrambi dalla planimetria: ogni blocco su cui si prende merce diventa una
+corsia, e i suoi lati raggiungibili diventano gli scaffali, divisi in campate
+da 2,5 m con il punto di prelievo al centro. Muri, casse e ingresso non fanno
+corsia. L'ordine di percorrenza segue una serpentina a fasce, che e' il giro
+che si fa davvero.
+
+Rigenerare cancella i punti di prelievo, e con loro le posizioni dei prodotti:
+su un negozio gia' popolato la funzione si ferma e dice quante ne perderesti,
+prima di chiedere conferma.
+
+**3. Dai i nomi alle corsie.** `/admin/corsie` elenca quelle generate: si
+cambiano nome e ordine di percorrenza, e le etichette dei punti di prelievo
+seguono.
+
+Poi da `/admin/posizioni` si assegnano i prodotti, un reparto alla volta col
+pulsante "Tutto il reparto".
+
+Se qualche punto di prelievo finisce sotto un blocco o diventa irraggiungibile
+dall'ingresso, il salvataggio lo dice invece di nasconderlo.
 
 ## Note
 

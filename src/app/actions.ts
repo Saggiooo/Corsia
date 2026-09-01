@@ -7,6 +7,7 @@ import { getStore } from "@/lib/queries";
 import { requireAdmin, requireUser } from "@/lib/auth/session";
 import { bfsFrom, parseGrid, UNREACHABLE } from "@/lib/routing/grid";
 import { groupCells } from "@/lib/map/shapes";
+import { deriveLayout } from "@/lib/store/derive";
 import { buildRoute, type PickClass, type RouteStop } from "@/lib/routing/route";
 import type { OrphanSnapshot, StopSnapshot } from "@/lib/route-types";
 
@@ -422,7 +423,7 @@ export async function routeAndOpen(listId: string) {
   redirect(`/liste/${listId}/percorso`);
 }
 
-export type CellPaint = { x: number; y: number; kind: string; color?: string | null };
+export type CellPaint = { x: number; y: number; kind: string; color?: string | null; label?: string | null };
 
 /**
  * Salva la planimetria disegnata nell'editor: ricalcola la griglia di
@@ -469,11 +470,11 @@ export async function saveMap(input: {
     .filter((l) => reach[grid.index(l.accessX, l.accessY)] === UNREACHABLE)
     .map((l) => l.label ?? l.aisle.name);
 
-  // Raggruppo per tipo *e* colore: cosi' modificare uno scaffale non appiattisce
-  // i colori di reparto dei banchi che non hai toccato.
+  // Raggruppo per tipo, colore *e* nome: cosi' due reparti diversi disegnati
+  // con lo stesso strumento restano blocchi distinti, con la loro etichetta.
   const byStyle = new Map<string, number[][]>();
   for (const cell of input.cells) {
-    const style = `${cell.kind}::${cell.color ?? ""}`;
+    const style = `${cell.kind}::${cell.color ?? ""}::${cell.label ?? ""}`;
     byStyle.set(style, [...(byStyle.get(style) ?? []), [cell.x, cell.y]]);
   }
 
@@ -481,13 +482,14 @@ export async function saveMap(input: {
     await tx.fixture.deleteMany({ where: { storeId: store.id } });
 
     for (const [style, cells] of byStyle) {
-      const [kind, color] = style.split("::");
+      const [kind, color, label] = style.split("::");
       for (const group of groupCells(cells)) {
         await tx.fixture.create({
           data: {
             storeId: store.id,
             kind: kind as never,
             colorToken: color || KIND_COLOR[kind] || null,
+            label: label || null,
             cells: group,
           },
         });
@@ -667,5 +669,99 @@ export async function moveCategory(categorySlug: string, storeId: string, locati
 export async function setStoreStatus(storeId: string, status: "active" | "comingSoon") {
   await requireAdmin();
   await prisma.store.update({ where: { id: storeId }, data: { status } });
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Ricava corsie e punti di prelievo dalla planimetria disegnata.
+ *
+ * Rigenerare cancella i punti di prelievo esistenti, e con loro le posizioni
+ * dei prodotti: su un negozio gia' popolato serve una conferma esplicita,
+ * altrimenti un tocco distratto butterebbe via mesi di correzioni.
+ */
+export async function generateAisles(
+  storeId: string,
+  force = false,
+): Promise<
+  | { ok: true; aisles: number; locations: number }
+  | { ok: false; reason: "placements"; placements: number }
+  | { ok: false; reason: "empty" }
+> {
+  await requireAdmin();
+
+  const store = await prisma.store.findUniqueOrThrow({ where: { id: storeId } });
+  const placements = await prisma.placement.count({ where: { storeId } });
+  if (placements > 0 && !force) return { ok: false, reason: "placements", placements };
+
+  const fixtures = await prisma.fixture.findMany({ where: { storeId } });
+  const derived = deriveLayout(
+    parseGrid(store.grid as string[]),
+    fixtures.map((fixture) => ({
+      key: fixture.id,
+      kind: fixture.kind,
+      label: fixture.label,
+      cells: fixture.cells as number[][],
+    })),
+  );
+
+  if (derived.aisles.length === 0) return { ok: false, reason: "empty" };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.location.deleteMany({ where: { storeId } });
+    await tx.aisle.deleteMany({ where: { storeId } });
+
+    const aisleId = new Map<string, string>();
+    for (const aisle of derived.aisles) {
+      const row = await tx.aisle.create({
+        data: {
+          storeId,
+          number: aisle.number,
+          name: aisle.name,
+          sequence: aisle.sequence,
+          vertical: aisle.vertical,
+        },
+      });
+      aisleId.set(aisle.key, row.id);
+    }
+
+    await tx.location.createMany({
+      data: derived.locations.map((location) => ({
+        storeId,
+        aisleId: aisleId.get(location.aisleKey)!,
+        fixtureId: location.aisleKey,
+        side: location.side,
+        bay: location.bay,
+        accessX: location.accessX,
+        accessY: location.accessY,
+        label: location.label,
+      })),
+    });
+  });
+
+  revalidatePath("/", "layout");
+  return { ok: true, aisles: derived.aisles.length, locations: derived.locations.length };
+}
+
+/** Rinomina o rinumera una corsia. Le etichette dei punti seguono il nome. */
+export async function renameAisle(aisleId: string, name: string, sequence: number) {
+  await requireAdmin();
+
+  const aisle = await prisma.aisle.update({
+    where: { id: aisleId },
+    data: { name: name.trim() || "Corsia", sequence },
+    include: { locations: true },
+  });
+
+  await Promise.all(
+    aisle.locations.map((location) =>
+      prisma.location.update({
+        where: { id: location.id },
+        data: {
+          label: `${aisle.name} · scaffale ${location.bay} ${location.side === "L" ? "sx" : "dx"}`,
+        },
+      }),
+    ),
+  );
+
   revalidatePath("/", "layout");
 }

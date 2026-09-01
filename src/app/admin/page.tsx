@@ -16,6 +16,13 @@ export default async function AdminHome() {
       badge: null as number | null,
     },
     {
+      href: "/admin/corsie",
+      icon: "flag",
+      title: "Corsie",
+      description: "Nomi e ordine di percorrenza delle corsie generate.",
+      badge: null,
+    },
+    {
       href: "/admin/posizioni",
       icon: "basket",
       title: "Posizioni prodotti",
@@ -24,7 +31,7 @@ export default async function AdminHome() {
     },
     {
       href: "/admin/segnalazioni",
-      icon: "flag",
+      icon: "bookmark",
       title: "Segnalazioni",
       description: "Cosa dicono i membri che non torna, e cosa propongono.",
       badge: pending || null,
