@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { finishShopping, movePlacement, toggleChecked } from "@/app/actions";
+import { createReport, finishShopping, movePlacement, toggleChecked } from "@/app/actions";
 import { StoreMap, type MapFixture, type MapLabel } from "@/components/map/StoreMap";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
 import type { StopSnapshot } from "@/lib/route-types";
@@ -17,6 +17,9 @@ export type PickLocation = {
 type Props = {
   listId: string;
   listName: string;
+  storeId: string;
+  /** Gli admin spostano il prodotto davvero; i membri mandano una segnalazione. */
+  canEdit: boolean;
   stops: StopSnapshot[];
   path: number[][];
   checked: Record<string, boolean>;
@@ -48,7 +51,17 @@ function signOf(aisleName: string): { kicker: string; value: string; size: strin
   return { kicker: "Reparto", value: aisleName, size };
 }
 
-export function ShopMode({ listId, listName, stops, path, checked, locations, map }: Props) {
+export function ShopMode({
+  listId,
+  listName,
+  storeId,
+  canEdit,
+  stops,
+  path,
+  checked,
+  locations,
+  map,
+}: Props) {
   const [done, setDone] = useState(checked);
   const [index, setIndex] = useState(() => {
     const first = stops.findIndex((s) => !checked[s.itemId]);
@@ -56,6 +69,8 @@ export function ShopMode({ listId, listName, stops, path, checked, locations, ma
   });
   const [relocating, setRelocating] = useState(false);
   const [candidate, setCandidate] = useState<PickLocation | null>(null);
+  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
   const [, startTransition] = useTransition();
 
   const stop = stops[index];
@@ -106,13 +121,26 @@ export function ShopMode({ listId, listName, stops, path, checked, locations, ma
   };
 
   const confirmMove = () => {
-    if (!candidate || !stop?.productId) return;
+    if (!stop?.productId) return;
     const productId = stop.productId;
-    const locationId = candidate.id;
+    const locationId = candidate?.id ?? null;
+
     buzz([10, 40, 10]);
     setRelocating(false);
     setCandidate(null);
-    startTransition(() => movePlacement(productId, locationId));
+
+    if (canEdit) {
+      if (!locationId) return;
+      startTransition(() => movePlacement(productId, locationId));
+      return;
+    }
+
+    const note = message;
+    setMessage("");
+    setSent(true);
+    startTransition(() =>
+      createReport({ productId, storeId, suggestedLocationId: locationId, message: note }),
+    );
   };
 
   if (!stop) {
@@ -228,10 +256,13 @@ export function ShopMode({ listId, listName, stops, path, checked, locations, ma
           </button>
           <button
             type="button"
-            onClick={() => setRelocating(true)}
+            onClick={() => {
+              setSent(false);
+              setRelocating(true);
+            }}
             className="ml-auto rounded-full border border-[var(--color-line)] px-4 py-2.5 text-sm text-[var(--color-signal)]"
           >
-            Non è qui
+            {sent ? "Segnalato ✓" : "Non è qui"}
           </button>
         </div>
 
@@ -267,10 +298,14 @@ export function ShopMode({ listId, listName, stops, path, checked, locations, ma
         <div className="fixed inset-0 z-50 flex flex-col bg-[var(--color-paper)]">
           <div className="flex items-start justify-between gap-3 px-5 py-4">
             <div>
-              <p className="tag text-[var(--color-ink-3)]">Dove hai trovato</p>
+              <p className="tag text-[var(--color-ink-3)]">
+                {canEdit ? "Dove hai trovato" : "Segnala la posizione di"}
+              </p>
               <p className="font-display text-xl leading-tight">{stop.name}</p>
               <p className="mt-1 text-sm text-[var(--color-ink-3)]">
-                Tocca il punto giusto sulla mappa.
+                {canEdit
+                  ? "Tocca il punto giusto sulla mappa."
+                  : "Tocca dove l’hai trovato: un admin decide se applicarlo."}
               </p>
             </div>
             <button
@@ -305,13 +340,23 @@ export function ShopMode({ listId, listName, stops, path, checked, locations, ma
                 {candidate ? candidate.label : "Nessun punto selezionato"}
               </p>
             </div>
+
+            {!canEdit && (
+              <input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Dettagli, facoltativi"
+                className="mb-3 w-full rounded-full border border-[var(--color-line)] bg-[var(--color-paper-2)] px-4 py-3 text-sm outline-none placeholder:text-[var(--color-ink-3)]"
+              />
+            )}
+
             <button
               type="button"
               onClick={confirmMove}
-              disabled={!candidate}
+              disabled={!candidate && canEdit}
               className="font-display w-full rounded-full bg-[var(--color-brand)] py-4 text-lg text-[var(--color-paper)] disabled:opacity-40"
             >
-              Conferma posizione
+              {canEdit ? "Conferma posizione" : "Invia segnalazione"}
             </button>
           </div>
         </div>

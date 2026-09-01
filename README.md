@@ -6,8 +6,9 @@ sulla mappa del negozio.
 
 Accesso con email e password, account creati a mano: niente registrazione
 pubblica ne' recupero password. Ogni utente ha le sue liste, i suoi preferiti e
-i suoi prodotti salvati; la mappa e le posizioni dei prodotti sono invece
-patrimonio comune, perche' correggerle serve a tutti.
+i suoi prodotti salvati; mappe e posizioni dei prodotti sono invece patrimonio
+comune, e le cambiano solo gli **admin**. I **member** usano l'app e segnalano
+quando un prodotto non e' dove dice Corsia.
 
 ## Come funziona
 
@@ -74,6 +75,36 @@ Senza password ne genera una e la stampa. Gli altri comandi sono `elenco`,
 `password <email> <nuova>` (che chiude anche le sessioni aperte) e
 `rimuovi <email>` (che cancella l'utente con tutte le sue liste).
 
+### Ruoli
+
+| | Admin | Member |
+|---|---|---|
+| Liste, preferiti, salvati | sì | sì |
+| Correggere la posizione di un prodotto | la sposta subito | manda una segnalazione |
+| Disegnare le planimetrie | sì | no |
+| Spostare interi reparti | sì | no |
+| Vedere e decidere le segnalazioni | sì | no |
+
+```bash
+npx tsx scripts/user.mts ruolo mario@esempio.it admin
+```
+
+Le pagine sotto `/admin` passano tutte dal layout che chiama `requireAdmin`:
+nessuna resta scoperta per dimenticanza. Un member che ci arriva viene
+rimandato alla home, non alla pagina di accesso: è autenticato, semplicemente
+non ha i permessi.
+
+### Segnalazioni
+
+Dalla modalità spesa, il tasto "Non è qui" apre la mappa. Per un admin sposta
+il prodotto e conferma la posizione; per un member crea una segnalazione con
+dove l'app diceva che fosse, dove dice lui che sia e una nota facoltativa.
+
+In `/admin/segnalazioni` l'admin vede chi ha segnalato cosa e cosa propone, e
+può accettare, accettare correggendo la posizione proposta, o rifiutare — con
+un motivo. Accettare sposta davvero il prodotto e ne conferma la posizione,
+quindi il seed non la tocca più.
+
 Le password sono hashate con scrypt della libreria standard di Node: nessuna
 dipendenza nativa da compilare, quindi si comporta uguale in Docker e su
 hosting serverless. Del token di sessione il database conserva solo l'impronta
@@ -83,6 +114,17 @@ sessioni durano 90 giorni: non si fa il login in mezzo alla spesa.
 `src/proxy.ts` blocca chi non ha il cookie; la validita' vera della sessione la
 controlla il server con `requireUser`, perche' nel proxy il database non e'
 raggiungibile.
+
+## Supermercati
+
+La home elenca i supermercati; quello selezionato si apre in grande con la sua
+mappa, gli altri restano compressi in una riga. Il pulsante in fondo crea una
+lista sul supermercato selezionato.
+
+Un supermercato annunciato ma non ancora rilevato ha stato `comingSoon`: si
+vede con l'etichetta "Prossimamente" e non e' selezionabile per una lista.
+Conad Castenaso e' li' in questo stato; diventa utilizzabile quando gli si
+disegna una planimetria.
 
 ## Liste, preferiti, salvati
 
@@ -131,6 +173,36 @@ Senza password ne genera una e la stampa. Gli altri comandi sono `elenco`,
 `password <email> <nuova>` (che chiude anche le sessioni aperte) e
 `rimuovi <email>` (che cancella l'utente con tutte le sue liste).
 
+### Ruoli
+
+| | Admin | Member |
+|---|---|---|
+| Liste, preferiti, salvati | sì | sì |
+| Correggere la posizione di un prodotto | la sposta subito | manda una segnalazione |
+| Disegnare le planimetrie | sì | no |
+| Spostare interi reparti | sì | no |
+| Vedere e decidere le segnalazioni | sì | no |
+
+```bash
+npx tsx scripts/user.mts ruolo mario@esempio.it admin
+```
+
+Le pagine sotto `/admin` passano tutte dal layout che chiama `requireAdmin`:
+nessuna resta scoperta per dimenticanza. Un member che ci arriva viene
+rimandato alla home, non alla pagina di accesso: è autenticato, semplicemente
+non ha i permessi.
+
+### Segnalazioni
+
+Dalla modalità spesa, il tasto "Non è qui" apre la mappa. Per un admin sposta
+il prodotto e conferma la posizione; per un member crea una segnalazione con
+dove l'app diceva che fosse, dove dice lui che sia e una nota facoltativa.
+
+In `/admin/segnalazioni` l'admin vede chi ha segnalato cosa e cosa propone, e
+può accettare, accettare correggendo la posizione proposta, o rifiutare — con
+un motivo. Accettare sposta davvero il prodotto e ne conferma la posizione,
+quindi il seed non la tocca più.
+
 Le password sono hashate con scrypt della libreria standard di Node: nessuna
 dipendenza nativa da compilare, quindi si comporta uguale in Docker e su
 hosting serverless. Del token di sessione il database conserva solo l'impronta
@@ -140,6 +212,17 @@ sessioni durano 90 giorni: non si fa il login in mezzo alla spesa.
 `src/proxy.ts` blocca chi non ha il cookie; la validita' vera della sessione la
 controlla il server con `requireUser`, perche' nel proxy il database non e'
 raggiungibile.
+
+## Supermercati
+
+La home elenca i supermercati; quello selezionato si apre in grande con la sua
+mappa, gli altri restano compressi in una riga. Il pulsante in fondo crea una
+lista sul supermercato selezionato.
+
+Un supermercato annunciato ma non ancora rilevato ha stato `comingSoon`: si
+vede con l'etichetta "Prossimamente" e non e' selezionabile per una lista.
+Conad Castenaso e' li' in questo stato; diventa utilizzabile quando gli si
+disegna una planimetria.
 
 ## Liste, preferiti, salvati
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StoreMap } from "@/components/map/StoreMap";
 import { getMapData, getStore } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,9 @@ const LEGEND = [
 ];
 
 export default async function MapPage() {
-  const [map, store] = await Promise.all([getMapData(), getStore()]);
+  const user = await requireUser();
+  const store = await getStore();
+  const map = await getMapData(store.id);
   const meters = (cells: number) => Math.round((cells * store.cellSizeCm) / 100);
 
   return (
@@ -32,12 +35,16 @@ export default async function MapPage() {
           <p className="tag text-[var(--color-ink-3)]">Mappa</p>
           <h1 className="font-display -mt-0.5 text-xl leading-tight">{store.name}</h1>
         </div>
-        <Link
-          href="/mappa/modifica"
-          className="rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs text-[var(--color-ink-2)]"
-        >
-          Modifica
-        </Link>
+        {user.role === "admin" ? (
+          <Link
+            href="/mappa/modifica"
+            className="rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs text-[var(--color-ink-2)]"
+          >
+            Modifica
+          </Link>
+        ) : (
+          <span className="w-9" />
+        )}
       </header>
 
       <div className="min-h-0 flex-1 px-3">

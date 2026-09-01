@@ -100,8 +100,37 @@ async function main() {
       entranceY: layout.entrance[1],
       checkoutX: layout.checkout[0],
       checkoutY: layout.checkout[1],
+      status: "active",
+      sortOrder: 0,
     },
     update: {},
+  });
+
+  // Annunciato ma senza planimetria: si vede sulla home, non e' selezionabile.
+  await prisma.store.upsert({
+    where: { slug: "conad-castenaso" },
+    create: {
+      slug: "conad-castenaso",
+      name: "Conad Castenaso",
+      address: "Castenaso (BO)",
+      status: "comingSoon",
+      sortOrder: 1,
+      // Tela vuota delle stesse dimensioni dell'altro negozio: l'admin ci
+      // disegna sopra dall'editor, poi lo rende utilizzabile.
+      gridW: layout.width,
+      gridH: layout.height,
+      cellSizeCm: layout.cellSizeCm,
+      grid: Array.from({ length: layout.height }, (_, y) =>
+        Array.from({ length: layout.width }, (_, x) =>
+          x === 0 || y === 0 || x === layout.width - 1 || y === layout.height - 1 ? "#" : ".",
+        ).join(""),
+      ),
+      entranceX: 2,
+      entranceY: 2,
+      checkoutX: layout.width - 3,
+      checkoutY: layout.height - 3,
+    },
+    update: { status: "comingSoon", sortOrder: 1 },
   });
 
   // --- Corsie -----------------------------------------------------------

@@ -8,6 +8,24 @@ export async function getStore() {
   return prisma.store.findUniqueOrThrow({ where: { slug: STORE_SLUG } });
 }
 
+/** Tutti i supermercati, con la stella dell'utente e i preferiti in cima. */
+export async function getStores(userId: string) {
+  const stores = await prisma.store.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    include: { favorites: { where: { userId } } },
+  });
+
+  return stores
+    .map((store) => ({ ...store, favorite: store.favorites.length > 0 }))
+    .sort((a, b) => Number(b.favorite) - Number(a.favorite));
+}
+
+/** Il supermercato su cui si apre una nuova lista se non se ne sceglie uno. */
+export async function getDefaultStore(userId: string) {
+  const stores = await getStores(userId);
+  return stores.find((store) => store.status === "active") ?? null;
+}
+
 export type MapData = {
   grid: string[];
   fixtures: MapFixture[];
@@ -17,9 +35,14 @@ export type MapData = {
   cellSizeCm: number;
 };
 
-/** Tutto quello che serve a disegnare la mappa, gia' pronto per il componente. */
-export async function getMapData(): Promise<MapData> {
-  const store = await getStore();
+/**
+ * Tutto quello che serve a disegnare la mappa, gia' pronto per il componente.
+ * Senza `storeId` usa il negozio predefinito.
+ */
+export async function getMapData(storeId?: string): Promise<MapData> {
+  const store = storeId
+    ? await prisma.store.findUniqueOrThrow({ where: { id: storeId } })
+    : await getStore();
 
   const [fixtures, aisles] = await Promise.all([
     prisma.fixture.findMany({ where: { storeId: store.id } }),
@@ -193,4 +216,92 @@ export async function isFavoriteStore(userId: string, storeId: string): Promise<
   });
 
   return favorite !== null;
+}
+
+// --- Admin ----------------------------------------------------------------
+
+export async function getReports(status?: "pending" | "accepted" | "rejected") {
+  return prisma.report.findMany({
+    where: status ? { status } : undefined,
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    take: 100,
+    include: {
+      user: { select: { firstName: true, lastName: true, email: true } },
+      resolvedBy: { select: { firstName: true, lastName: true } },
+      store: { select: { name: true } },
+      product: { include: { category: true } },
+      previous: { include: { aisle: true } },
+      suggested: { include: { aisle: true } },
+    },
+  });
+}
+
+export async function countPendingReports(): Promise<number> {
+  return prisma.report.count({ where: { status: "pending" } });
+}
+
+/** Punti di prelievo di un negozio, pronti da mostrare in un elenco a tendina. */
+export async function getPickLocations(storeId: string) {
+  const locations = await prisma.location.findMany({
+    where: { storeId },
+    orderBy: [{ aisle: { sequence: "asc" } }, { side: "asc" }, { bay: "asc" }],
+    include: { aisle: true },
+  });
+
+  return locations.map((location) => ({
+    id: location.id,
+    label: location.label ?? `${location.aisle.name} · ${location.side}${location.bay}`,
+    aisleName: location.aisle.name,
+    accessX: location.accessX,
+    accessY: location.accessY,
+  }));
+}
+
+/** Prodotti di una categoria con la posizione attuale nel negozio indicato. */
+export async function getCategoryPlacements(categorySlug: string, storeId: string) {
+  const products = await prisma.product.findMany({
+    where: { category: { slug: categorySlug } },
+    orderBy: { name: "asc" },
+    include: {
+      category: true,
+      placements: { where: { storeId }, include: { location: { include: { aisle: true } } } },
+    },
+  });
+
+  return products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    size: product.size,
+    iconKey: product.iconKey,
+    categoryIcon: product.category.iconKey,
+    colorToken: product.category.colorToken,
+    locationId: product.placements[0]?.locationId ?? null,
+    locationLabel: product.placements[0]?.location.label ?? null,
+    confirmed: product.placements[0]?.confidence === "confirmed",
+  }));
+}
+
+export async function getMappedStores() {
+  return prisma.store.findMany({
+    where: { status: "active" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true },
+  });
+}
+
+/** Supermercati con due numeri utili a capire a che punto e' la mappatura. */
+export async function getStoresForAdmin() {
+  const stores = await prisma.store.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    include: { _count: { select: { aisles: true, placements: true } } },
+  });
+
+  return stores.map((store) => ({
+    id: store.id,
+    name: store.name,
+    address: store.address,
+    status: store.status,
+    aisles: store._count.aisles,
+    products: store._count.placements,
+  }));
 }

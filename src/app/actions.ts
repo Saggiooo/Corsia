@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getStore } from "@/lib/queries";
-import { requireUser } from "@/lib/auth/session";
+import { requireAdmin, requireUser } from "@/lib/auth/session";
 import { bfsFrom, parseGrid, UNREACHABLE } from "@/lib/routing/grid";
 import { groupCells } from "@/lib/map/shapes";
 import { buildRoute, type PickClass, type RouteStop } from "@/lib/routing/route";
@@ -43,9 +43,14 @@ function defaultListName(): string {
     .replace(/^\w/, (c) => c.toUpperCase());
 }
 
-export async function createList() {
+export async function createList(storeId?: string) {
   const user = await requireUser();
-  const store = await getStore();
+  const store = storeId
+    ? await prisma.store.findUniqueOrThrow({ where: { id: storeId } })
+    : await getStore();
+
+  if (store.status !== "active") throw new Error("Questo supermercato non e' ancora mappato");
+
   const list = await prisma.list.create({
     data: { storeId: store.id, userId: user.id, name: defaultListName() },
   });
@@ -143,8 +148,9 @@ export async function toggleChecked(itemId: string, checked: boolean): Promise<v
  * Sposta un prodotto su un nuovo punto di prelievo e lo marca come confermato:
  * e' il modo in cui la mappa impara mentre si fa la spesa.
  */
+/** Sposta davvero il prodotto. Solo gli admin: i membri usano `createReport`. */
 export async function movePlacement(productId: string, locationId: string, level?: number | null) {
-  await requireUser();
+  await requireAdmin();
   const store = await getStore();
   await prisma.placement.upsert({
     where: { productId_storeId: { productId, storeId: store.id } },
@@ -425,12 +431,13 @@ export type CellPaint = { x: number; y: number; kind: string; color?: string | n
  * punto finisce sotto un blocco, la funzione lo segnala invece di nasconderlo.
  */
 export async function saveMap(input: {
+  storeId: string;
   cells: CellPaint[];
   entrance: [number, number];
   checkout: [number, number];
 }): Promise<{ blocked: string[]; unreachable: string[] }> {
-  await requireUser();
-  const store = await getStore();
+  await requireAdmin();
+  const store = await prisma.store.findUniqueOrThrow({ where: { id: input.storeId } });
 
   const blockedKinds = new Set(["shelf", "counter", "fridge", "freezer", "checkout", "wall", "promo"]);
   const kindOf = new Map<string, string>();
@@ -518,3 +525,147 @@ const KIND_COLOR: Record<string, string> = {
   checkout: "checkout",
   promo: "sweet",
 };
+
+// --- Segnalazioni ---------------------------------------------------------
+
+/**
+ * Un membro segnala che un prodotto non e' dove dice l'app, e propone dove
+ * sta davvero. Non cambia niente da solo: decide un admin.
+ */
+export async function createReport(input: {
+  productId: string;
+  storeId: string;
+  suggestedLocationId: string | null;
+  message: string;
+}) {
+  const user = await requireUser();
+
+  const placement = await prisma.placement.findUnique({
+    where: { productId_storeId: { productId: input.productId, storeId: input.storeId } },
+    select: { locationId: true },
+  });
+
+  await prisma.report.create({
+    data: {
+      userId: user.id,
+      storeId: input.storeId,
+      productId: input.productId,
+      previousLocationId: placement?.locationId ?? null,
+      suggestedLocationId: input.suggestedLocationId,
+      message: input.message.trim() || null,
+    },
+  });
+
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Accetta una segnalazione: sposta il prodotto nella posizione indicata e la
+ * marca come confermata. `locationId` permette all'admin di correggere la
+ * proposta prima di applicarla.
+ */
+export async function acceptReport(reportId: string, locationId?: string, note?: string) {
+  const admin = await requireAdmin();
+
+  const report = await prisma.report.findUniqueOrThrow({ where: { id: reportId } });
+  const target = locationId ?? report.suggestedLocationId;
+  if (!target) throw new Error("Serve una posizione da applicare");
+
+  await prisma.$transaction([
+    prisma.placement.upsert({
+      where: { productId_storeId: { productId: report.productId, storeId: report.storeId } },
+      create: {
+        productId: report.productId,
+        storeId: report.storeId,
+        locationId: target,
+        confidence: "confirmed",
+      },
+      update: { locationId: target, confidence: "confirmed" },
+    }),
+    prisma.report.update({
+      where: { id: reportId },
+      data: {
+        status: "accepted",
+        suggestedLocationId: target,
+        resolvedAt: new Date(),
+        resolvedById: admin.id,
+        resolutionNote: note?.trim() || null,
+      },
+    }),
+  ]);
+
+  revalidatePath("/", "layout");
+}
+
+export async function rejectReport(reportId: string, note?: string) {
+  const admin = await requireAdmin();
+
+  await prisma.report.update({
+    where: { id: reportId },
+    data: {
+      status: "rejected",
+      resolvedAt: new Date(),
+      resolvedById: admin.id,
+      resolutionNote: note?.trim() || null,
+    },
+  });
+
+  revalidatePath("/", "layout");
+}
+
+// --- Posizioni prodotto (admin) -------------------------------------------
+
+/**
+ * Sposta un gruppo di prodotti in una sola mossa: serve quando un intero
+ * reparto cambia corsia e correggerli uno a uno sarebbe una serata persa.
+ */
+export async function moveProducts(productIds: string[], storeId: string, locationId: string) {
+  await requireAdmin();
+  if (productIds.length === 0) return;
+
+  const existing = await prisma.placement.findMany({
+    where: { storeId, productId: { in: productIds } },
+    select: { productId: true },
+  });
+  const known = new Set(existing.map((p) => p.productId));
+
+  await prisma.$transaction([
+    prisma.placement.updateMany({
+      where: { storeId, productId: { in: [...known] } },
+      data: { locationId, confidence: "confirmed" },
+    }),
+    prisma.placement.createMany({
+      data: productIds
+        .filter((id) => !known.has(id))
+        .map((productId) => ({ productId, storeId, locationId, confidence: "confirmed" as const })),
+    }),
+  ]);
+
+  revalidatePath("/", "layout");
+}
+
+/** Sposta in blocco tutti i prodotti di una categoria. */
+export async function moveCategory(categorySlug: string, storeId: string, locationId: string) {
+  await requireAdmin();
+
+  const products = await prisma.product.findMany({
+    where: { category: { slug: categorySlug } },
+    select: { id: true },
+  });
+
+  await moveProducts(
+    products.map((p) => p.id),
+    storeId,
+    locationId,
+  );
+}
+
+/**
+ * Un supermercato diventa utilizzabile solo quando qualcuno ne ha disegnato la
+ * planimetria: finche' e' "prossimamente" non ci si puo' fare una lista.
+ */
+export async function setStoreStatus(storeId: string, status: "active" | "comingSoon") {
+  await requireAdmin();
+  await prisma.store.update({ where: { id: storeId }, data: { status } });
+  revalidatePath("/", "layout");
+}

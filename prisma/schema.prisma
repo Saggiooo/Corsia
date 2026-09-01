@@ -47,23 +47,43 @@ enum Side {
   R
 }
 
+enum Role {
+  admin
+  member
+}
+
+enum StoreStatus {
+  /// Mappato e utilizzabile.
+  active
+  /// Annunciato ma senza planimetria: si vede, non si usa.
+  comingSoon
+}
+
+enum ReportStatus {
+  pending
+  accepted
+  rejected
+}
+
 /// Un supermercato. La planimetria e' una griglia di celle da `cellSizeCm`.
 /// `grid` e' un array di stringhe (una per riga): '.' percorribile, '#' occupata.
 model Store {
-  id         String   @id @default(cuid())
-  slug       String   @unique
+  id         String      @id @default(cuid())
+  slug       String      @unique
   name       String
   address    String?
   gridW      Int
   gridH      Int
-  cellSizeCm Int      @default(50)
+  cellSizeCm Int         @default(50)
+  status     StoreStatus @default(active)
+  sortOrder  Int         @default(0)
   grid       Json
   entranceX  Int
   entranceY  Int
   checkoutX  Int
   checkoutY  Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   aisles     Aisle[]
   fixtures   Fixture[]
@@ -71,6 +91,7 @@ model Store {
   placements Placement[]
   lists      List[]
   favorites  FavoriteStore[]
+  reports    Report[]
 }
 
 /// Corsia. `sequence` e' l'ordine naturale di percorrenza, usato come seed
@@ -121,11 +142,13 @@ model Location {
   accessY   Int
   label     String?
 
-  store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  aisle      Aisle       @relation(fields: [aisleId], references: [id], onDelete: Cascade)
-  fixture    Fixture?    @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
-  placements Placement[]
-  categories Category[]
+  store               Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  aisle               Aisle       @relation(fields: [aisleId], references: [id], onDelete: Cascade)
+  fixture             Fixture?    @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  placements          Placement[]
+  categories          Category[]
+  reportedAsPrevious  Report[]    @relation("ReportPrevious")
+  reportedAsSuggested Report[]    @relation("ReportSuggested")
 
   @@unique([storeId, aisleId, side, bay])
   @@index([storeId])
@@ -169,6 +192,7 @@ model Product {
   listItems      ListItem[]
   savedProducts  SavedProduct[]
   purchaseCounts PurchaseCount[]
+  reports        Report[]
 
   @@index([categoryId])
 }
@@ -199,6 +223,7 @@ model User {
   passwordHash String
   firstName    String
   lastName     String
+  role         Role     @default(member)
   createdAt    DateTime @default(now())
 
   sessions  Session[]
@@ -206,6 +231,8 @@ model User {
   favorites FavoriteStore[]
   saved     SavedProduct[]
   purchases PurchaseCount[]
+  reports   Report[]        @relation("ReportAuthor")
+  resolved  Report[]        @relation("ReportResolver")
 }
 
 /// Del token si conserva solo l'impronta sha256.
@@ -315,6 +342,35 @@ model Route {
   computedAt DateTime  @default(now())
 
   list List @relation(fields: [listId], references: [id], onDelete: Cascade)
+}
+
+/// Segnalazione di un membro: "questo prodotto non e' dove dice l'app".
+/// Solo un admin puo' accettarla, e accettandola sposta davvero il prodotto.
+model Report {
+  id                  String       @id @default(cuid())
+  userId              String
+  storeId             String
+  productId           String
+  /// Dove l'app diceva che fosse, al momento della segnalazione.
+  previousLocationId  String?
+  /// Dove il segnalatore dice che sia davvero.
+  suggestedLocationId String?
+  message             String?
+  status              ReportStatus @default(pending)
+  createdAt           DateTime     @default(now())
+  resolvedAt          DateTime?
+  resolvedById        String?
+  resolutionNote      String?
+
+  user       User      @relation("ReportAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy User?     @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  store      Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  previous   Location? @relation("ReportPrevious", fields: [previousLocationId], references: [id], onDelete: SetNull)
+  suggested  Location? @relation("ReportSuggested", fields: [suggestedLocationId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId])
 }
 
 model Settings {

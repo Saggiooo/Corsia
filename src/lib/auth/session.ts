@@ -15,6 +15,7 @@ export type SessionUser = {
   email: string;
   firstName: string;
   lastName: string;
+  role: "admin" | "member";
 };
 
 /**
@@ -38,12 +39,24 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     email: session.user.email,
     firstName: session.user.firstName,
     lastName: session.user.lastName,
+    role: session.user.role,
   };
 }
 
 export async function requireUser(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) redirect("/accedi");
+  return user;
+}
+
+/**
+ * Solo gli admin toccano mappe e posizioni. I membri segnalano e basta.
+ * Chi non e' admin viene rimandato alla home, non alla pagina di accesso:
+ * e' autenticato, semplicemente non ha i permessi.
+ */
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+  if (user.role !== "admin") redirect("/");
   return user;
 }
 

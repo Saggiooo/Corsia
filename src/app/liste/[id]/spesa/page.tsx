@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function ShopPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  const [list, map, store] = await Promise.all([getList(id, user.id), getMapData(), getStore()]);
-
+  const list = await getList(id, user.id);
   if (!list) notFound();
+  const [map, store] = await Promise.all([getMapData(list.storeId), getStore()]);
+
   if (!list.route) redirect(`/liste/${id}`);
 
   const snapshot = list.route.stops as unknown as RouteSnapshot;
@@ -37,6 +38,8 @@ export default async function ShopPage({ params }: { params: Promise<{ id: strin
       <ShopMode
         listId={list.id}
         listName={list.name}
+        storeId={list.storeId}
+        canEdit={user.role === "admin"}
         stops={snapshot.stops}
         path={list.route.path as number[][]}
         checked={checked}

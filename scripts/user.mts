@@ -4,6 +4,7 @@
  *
  *   npx tsx scripts/user.mts elenco
  *   npx tsx scripts/user.mts aggiungi mario@esempio.it Mario Rossi [password]
+ *   npx tsx scripts/user.mts ruolo mario@esempio.it admin
  *   npx tsx scripts/user.mts password mario@esempio.it nuovaPassword
  *   npx tsx scripts/user.mts rimuovi mario@esempio.it
  */
@@ -42,7 +43,7 @@ async function main() {
       for (const user of users) {
         console.log(
           `${user.email.padEnd(30)} ${`${user.firstName} ${user.lastName}`.padEnd(24)} ` +
-            `${user._count.lists} liste, ${user._count.saved} salvati`,
+            `${user.role.padEnd(7)} ${user._count.lists} liste, ${user._count.saved} salvati`,
         );
       }
       return;
@@ -50,8 +51,12 @@ async function main() {
 
     case "aggiungi": {
       const [email, firstName, lastName, password] = args;
+      const role = args[4] as "admin" | "member" | undefined;
       if (!email || !firstName || !lastName) {
-        throw new Error("uso: aggiungi <email> <nome> <cognome> [password]");
+        throw new Error("uso: aggiungi <email> <nome> <cognome> [password] [admin|member]");
+      }
+      if (role && role !== "admin" && role !== "member") {
+        throw new Error("il ruolo puo' essere solo admin o member");
       }
 
       const chosen = password ?? generatedPassword();
@@ -61,11 +66,27 @@ async function main() {
           firstName,
           lastName,
           passwordHash: hashPassword(chosen),
+          role: role ?? "member",
         },
       });
 
-      console.log(`Creato ${user.email}`);
+      console.log(`Creato ${user.email} (${user.role})`);
       if (!password) console.log(`Password generata: ${chosen}`);
+      return;
+    }
+
+    case "ruolo": {
+      const [email, role] = args;
+      if (role !== "admin" && role !== "member") {
+        throw new Error("uso: ruolo <email> <admin|member>");
+      }
+
+      const user = await prisma.user.update({
+        where: { email: normalizeEmail(email) },
+        data: { role },
+      });
+
+      console.log(`${user.email} ora e' ${user.role}`);
       return;
     }
 
@@ -97,7 +118,7 @@ async function main() {
     }
 
     default:
-      console.log("Comandi: elenco | aggiungi | password | rimuovi");
+      console.log("Comandi: elenco | aggiungi | ruolo | password | rimuovi");
       process.exitCode = 1;
   }
 }

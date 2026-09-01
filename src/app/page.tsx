@@ -3,7 +3,7 @@ import { createList, toggleFavoriteStore } from "@/app/actions";
 import { Icon } from "@/components/icons/Icon";
 import { StoreMap } from "@/components/map/StoreMap";
 import { Wordmark } from "@/components/ui/Wordmark";
-import { getLists, getMapData, getStore, isFavoriteStore } from "@/lib/queries";
+import { getLists, getMapData, getStores } from "@/lib/queries";
 import { requireUser } from "@/lib/auth/session";
 import { signOutAction } from "@/app/accedi/actions";
 
@@ -21,10 +21,17 @@ const STATUS_LABEL: Record<string, string> = {
   done: "Completata",
 };
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ negozio?: string }>;
+}) {
+  const { negozio } = await searchParams;
   const user = await requireUser();
-  const [store, map, lists] = await Promise.all([getStore(), getMapData(), getLists(user.id)]);
-  const favorite = await isFavoriteStore(user.id, store.id);
+
+  const [stores, lists] = await Promise.all([getStores(user.id), getLists(user.id)]);
+  const selected = stores.find((store) => store.id === negozio) ?? stores[0];
+  const map = selected.status === "active" ? await getMapData(selected.id) : null;
 
   return (
     <main className="mx-auto w-full max-w-lg px-5 pt-10 pb-32">
@@ -40,6 +47,14 @@ export default async function HomePage() {
           >
             Mappa
           </Link>
+          {user.role === "admin" && (
+            <Link
+              href="/admin"
+              className="rounded-full border border-[var(--color-ink)] bg-[var(--color-ink)] px-3 py-1.5 text-xs font-medium text-[var(--color-paper)]"
+            >
+              Admin
+            </Link>
+          )}
           <form action={signOutAction}>
             <button
               type="submit"
@@ -51,39 +66,101 @@ export default async function HomePage() {
         </div>
       </header>
 
-      <section className="plate grain relative mt-8 overflow-hidden">
-        <div className="flex items-start justify-between gap-4 p-5 pb-3">
-          <div>
-            <p className="tag text-[var(--color-brand)]">Supermercato</p>
-            <h2 className="font-display mt-1 text-2xl leading-tight">{store.name}</h2>
-            <p className="mt-1 text-sm text-[var(--color-ink-3)]">{store.address}</p>
-          </div>
-          <form action={toggleFavoriteStore.bind(null, store.id)}>
-            <button
-              type="submit"
-              aria-label={favorite ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
-              aria-pressed={favorite}
-              className="flex h-10 w-10 items-center justify-center rounded-full transition-transform active:scale-90"
-              style={
-                favorite
-                  ? { background: "var(--bakery-soft)", color: "var(--bakery)" }
-                  : { color: "var(--color-ink-3)" }
-              }
-            >
-              <Icon name="star" size={22} />
-            </button>
-          </form>
-        </div>
+      <section className="mt-8 space-y-3">
+        {stores.map((store, index) => {
+          const comingSoon = store.status === "comingSoon";
+          const active = store.id === selected.id;
 
-        <div className="h-44 px-2 pb-2 opacity-90">
-          <StoreMap
-            grid={map.grid}
-            fixtures={map.fixtures}
-            entrance={map.entrance}
-            checkout={map.checkout}
-            className="h-full w-full"
-          />
-        </div>
+          const star = (
+            <form action={toggleFavoriteStore.bind(null, store.id)}>
+              <button
+                type="submit"
+                aria-label={store.favorite ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                aria-pressed={store.favorite}
+                className="flex h-10 w-10 items-center justify-center rounded-full transition-transform active:scale-90"
+                style={
+                  store.favorite
+                    ? { background: "var(--bakery-soft)", color: "var(--bakery)" }
+                    : { color: "var(--color-ink-3)" }
+                }
+              >
+                <Icon name="star" size={22} />
+              </button>
+            </form>
+          );
+
+          // Compresso: una riga cliccabile che porta la selezione su questo negozio.
+          if (!active) {
+            return (
+              <article
+                key={store.id}
+                className="plate flex items-center gap-3 p-3.5"
+                style={{ animation: `rise .4s ${index * 60}ms both`, opacity: comingSoon ? 0.7 : 1 }}
+              >
+                <Link href={`/?negozio=${store.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px]"
+                    style={{
+                      background: comingSoon ? "var(--color-paper-3)" : "var(--color-brand-soft)",
+                      color: comingSoon ? "var(--color-ink-3)" : "var(--color-brand)",
+                    }}
+                  >
+                    <Icon name={comingSoon ? "clock" : "cart"} size={20} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{store.name}</span>
+                    <span className="tag text-[var(--color-ink-3)]">
+                      {comingSoon ? "Prossimamente" : "Tocca per usarlo"}
+                    </span>
+                  </span>
+                </Link>
+                {star}
+              </article>
+            );
+          }
+
+          // Selezionato: grande, con la sua mappa.
+          return (
+            <article
+              key={store.id}
+              // Il bordo scuro, non un ring: .plate imposta gia' box-shadow e lo sovrascriverebbe.
+              className="plate grain relative overflow-hidden"
+              style={{ animation: "rise .4s both", borderColor: "var(--color-ink)" }}
+            >
+              <div className="flex items-start justify-between gap-4 p-5 pb-3">
+                <div className="min-w-0">
+                  {comingSoon ? (
+                    <span className="tag inline-flex items-center gap-1.5 rounded-full bg-[var(--color-paper-3)] px-2.5 py-1 text-[var(--color-ink-2)]">
+                      <Icon name="clock" size={13} />
+                      Prossimamente
+                    </span>
+                  ) : (
+                    <p className="tag text-[var(--color-brand)]">Stai usando</p>
+                  )}
+                  <h2 className="font-display mt-1.5 truncate text-2xl leading-tight">{store.name}</h2>
+                  <p className="mt-1 text-sm text-[var(--color-ink-3)]">{store.address}</p>
+                </div>
+                {star}
+              </div>
+
+              {comingSoon || !map ? (
+                <p className="px-5 pb-5 text-sm text-[var(--color-ink-3)]">
+                  Non è ancora mappato: appena la planimetria è pronta lo trovi qui.
+                </p>
+              ) : (
+                <div className="h-44 px-2 pb-3 opacity-90">
+                  <StoreMap
+                    grid={map.grid}
+                    fixtures={map.fixtures}
+                    entrance={map.entrance}
+                    checkout={map.checkout}
+                    className="h-full w-full"
+                  />
+                </div>
+              )}
+            </article>
+          );
+        })}
       </section>
 
       <section className="mt-9">
@@ -139,17 +216,19 @@ export default async function HomePage() {
       </section>
 
       <form
-        action={createList}
+        action={createList.bind(null, selected.id)}
         className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-lg px-5"
         style={{ paddingBottom: "calc(1.25rem + var(--safe-b))" }}
       >
         <button
           type="submit"
-          className="font-display w-full rounded-full bg-[var(--color-ink)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98]"
+          disabled={selected.status !== "active"}
+          className="font-display w-full rounded-full bg-[var(--color-ink)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98] disabled:opacity-45"
         >
-          Nuova lista
+          {selected.status === "active" ? `Nuova lista · ${selected.name}` : "Non ancora disponibile"}
         </button>
       </form>
+
     </main>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveMap, type CellPaint } from "@/app/actions";
+import { saveMap, setStoreStatus, type CellPaint } from "@/app/actions";
 import { mergeCells } from "@/lib/map/shapes";
 
 type Tool = {
@@ -41,6 +41,9 @@ const STROKE: Record<string, string> = {
 };
 
 type Props = {
+  storeId: string;
+  storeName: string;
+  status: "active" | "comingSoon";
   width: number;
   height: number;
   cells: CellPaint[];
@@ -48,7 +51,16 @@ type Props = {
   checkout: [number, number];
 };
 
-export function MapEditor({ width, height, cells, entrance, checkout }: Props) {
+export function MapEditor({
+  storeId,
+  storeName,
+  status,
+  width,
+  height,
+  cells,
+  entrance,
+  checkout,
+}: Props) {
   // Valore = "tipo::colore". Il colore conserva la tinta di reparto originale
   // dei blocchi che non tocchi.
   const [painted, setPainted] = useState<Map<string, string>>(
@@ -162,6 +174,7 @@ export function MapEditor({ width, height, cells, entrance, checkout }: Props) {
       });
 
       const result = await saveMap({
+        storeId,
         cells: payload,
         entrance: markers.entrance,
         checkout: markers.checkout,
@@ -331,7 +344,20 @@ export function MapEditor({ width, height, cells, entrance, checkout }: Props) {
           disabled={saving}
           className="font-display mt-3 w-full rounded-full bg-[var(--color-ink)] py-3.5 text-lg text-[var(--color-paper)] disabled:opacity-60"
         >
-          {saving ? "Salvo…" : "Salva la mappa"}
+          {saving ? "Salvo…" : `Salva la mappa di ${storeName}`}
+        </button>
+
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() =>
+            startSaving(() => setStoreStatus(storeId, status === "active" ? "comingSoon" : "active"))
+          }
+          className="mt-2 w-full rounded-full border border-[var(--color-line)] py-2.5 text-sm text-[var(--color-ink-2)] disabled:opacity-60"
+        >
+          {status === "active"
+            ? "Rimetti in “prossimamente”"
+            : "Rendi utilizzabile: la planimetria è pronta"}
         </button>
       </div>
     </div>

@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function RoutePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  const [list, map] = await Promise.all([getList(id, user.id), getMapData()]);
-
+  const list = await getList(id, user.id);
   if (!list) notFound();
+  const map = await getMapData(list.storeId);
+
   if (!list.route) redirect(`/liste/${id}`);
 
   const snapshot = list.route.stops as unknown as RouteSnapshot;

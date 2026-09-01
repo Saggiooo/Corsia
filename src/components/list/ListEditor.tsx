@@ -217,7 +217,12 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
                 <div className="plate flex items-center gap-3 p-3">
                   <button
                     type="button"
-                    onClick={() => startTransition(() => addSavedProduct(listId, entry.id))}
+                    onClick={() =>
+                      startTransition(async () => {
+                        await addSavedProduct(listId, entry.id);
+                        reset();
+                      })
+                    }
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
                     <ProductAvatar
@@ -280,7 +285,14 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
                 <li key={hit.id} style={{ animation: `rise .28s ${Math.min(i, 12) * 25}ms both` }}>
                   <button
                     type="button"
-                    onClick={() => startTransition(() => addProduct(listId, hit.id))}
+                    onClick={() =>
+                      startTransition(async () => {
+                        await addProduct(listId, hit.id);
+                        // Torna subito alla lista: si aggiunge una cosa per volta
+                        // e si vuole vedere l'effetto prima di cercare la prossima.
+                        reset();
+                      })
+                    }
                     className="plate flex w-full items-center gap-3 p-3 text-left transition-transform active:scale-[0.99]"
                   >
                     <ProductAvatar
