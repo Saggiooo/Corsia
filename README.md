@@ -4,7 +4,10 @@ Webapp mobile-first per fare la spesa all'Extracoop di Villanova: componi la
 lista, Corsia calcola in che ordine prendere le cose e ti disegna il percorso
 sulla mappa del negozio.
 
-Uso personale, gira in LAN, nessuna autenticazione.
+Accesso con email e password, account creati a mano: niente registrazione
+pubblica ne' recupero password. Ogni utente ha le sue liste, i suoi preferiti e
+i suoi prodotti salvati; la mappa e le posizioni dei prodotti sono invece
+patrimonio comune, perche' correggerle serve a tutti.
 
 ## Come funziona
 
@@ -56,6 +59,40 @@ npm run dev
 | `npx tsx prisma/seed.ts` | Ricarica mappa, categorie e catalogo |
 | `npx tsx scripts/scrape-coop.ts` | Scarica il catalogo completo da coopshop.it (opzionale) |
 | `npx tsx scripts/check-route.mts` | Calcola un percorso di prova da riga di comando |
+| `npx tsx scripts/user.mts elenco` | Elenca gli utenti |
+| `npx tsx scripts/check-isolation.mts <a> <b>` | Verifica che due utenti non vedano i dati dell'altro |
+
+## Utenti
+
+Gli account si creano da riga di comando:
+
+```bash
+npx tsx scripts/user.mts aggiungi mario@esempio.it Mario Rossi
+```
+
+Senza password ne genera una e la stampa. Gli altri comandi sono `elenco`,
+`password <email> <nuova>` (che chiude anche le sessioni aperte) e
+`rimuovi <email>` (che cancella l'utente con tutte le sue liste).
+
+Le password sono hashate con scrypt della libreria standard di Node: nessuna
+dipendenza nativa da compilare, quindi si comporta uguale in Docker e su
+hosting serverless. Del token di sessione il database conserva solo l'impronta
+sha256, cosi' leggere la tabella non basta a fabbricarsi un cookie valido. Le
+sessioni durano 90 giorni: non si fa il login in mezzo alla spesa.
+
+`src/proxy.ts` blocca chi non ha il cookie; la validita' vera della sessione la
+controlla il server con `requireUser`, perche' nel proxy il database non e'
+raggiungibile.
+
+## Liste, preferiti, salvati
+
+Ogni riga della lista ha una **matita** per la nota libera ("Barilla mezzo kg")
+e un **segnalibro** che mette da parte il prodotto *con quella nota*: dal chip
+"Salvati" lo ripeschi già personalizzato invece di riscriverla ogni volta.
+
+La **stella** sulla scheda del supermercato lo segna fra i preferiti. La
+sezione "comprati spesso" nella lista vuota conta gli acquisti di ciascun
+utente, non quelli di tutti.
 
 ## Catalogo
 
@@ -82,7 +119,39 @@ chiavi disponibili stanno in `src/components/icons/paths.tsx`. `npm test`
 verifica che categorie e icone esistano e che non ci siano doppioni, cosi' un
 refuso si vede subito.
 
-### Catalogo completo Coop (opzionale)
+### Utenti
+
+Gli account si creano da riga di comando:
+
+```bash
+npx tsx scripts/user.mts aggiungi mario@esempio.it Mario Rossi
+```
+
+Senza password ne genera una e la stampa. Gli altri comandi sono `elenco`,
+`password <email> <nuova>` (che chiude anche le sessioni aperte) e
+`rimuovi <email>` (che cancella l'utente con tutte le sue liste).
+
+Le password sono hashate con scrypt della libreria standard di Node: nessuna
+dipendenza nativa da compilare, quindi si comporta uguale in Docker e su
+hosting serverless. Del token di sessione il database conserva solo l'impronta
+sha256, cosi' leggere la tabella non basta a fabbricarsi un cookie valido. Le
+sessioni durano 90 giorni: non si fa il login in mezzo alla spesa.
+
+`src/proxy.ts` blocca chi non ha il cookie; la validita' vera della sessione la
+controlla il server con `requireUser`, perche' nel proxy il database non e'
+raggiungibile.
+
+## Liste, preferiti, salvati
+
+Ogni riga della lista ha una **matita** per la nota libera ("Barilla mezzo kg")
+e un **segnalibro** che mette da parte il prodotto *con quella nota*: dal chip
+"Salvati" lo ripeschi già personalizzato invece di riscriverla ogni volta.
+
+La **stella** sulla scheda del supermercato lo segna fra i preferiti. La
+sezione "comprati spesso" nella lista vuota conta gli acquisti di ciascun
+utente, non quelli di tutti.
+
+## Catalogo completo Coop (opzionale)
 
 `scripts/scrape-coop.ts` scarica l'intero catalogo di coopshop.it (~22.000
 prodotti) in `data/catalog.snapshot.json`, e `npx tsx prisma/seed.ts

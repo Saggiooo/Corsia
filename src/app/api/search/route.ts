@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { searchProducts, type SearchHit } from "@/lib/queries";
+import { getSessionUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  // Il middleware controlla solo la presenza del cookie: qui si verifica che
+  // la sessione sia davvero valida prima di rispondere col catalogo.
+  if (!(await getSessionUser())) {
+    return NextResponse.json({ hits: [] }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
   const category = url.searchParams.get("category")?.trim() ?? "";

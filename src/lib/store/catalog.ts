@@ -627,7 +627,7 @@ const SEARCH_ALIASES: Record<string, readonly string[]> = {
     "Soave",
   ],
   "Vino rosato": ["Rosé", "Cerasuolo", "Chiaretto"],
-  Prosecco: ["Valdobbiadene", "Glera", "Prosecco brut", "Prosecco extra dry", "aperitivo", "spritz"],
+  Prosecco: ["Valdobbiadene", "Glera", "Prosecco brut", "Prosecco extra dry"],
   "Birra chiara": [
     "lager",
     "pils",
@@ -645,6 +645,70 @@ const SEARCH_ALIASES: Record<string, readonly string[]> = {
   "Birra rossa": ["birra ambrata", "red ale", "amber ale"],
   "Birra scura": ["stout", "porter", "dunkel", "Guinness"],
   "Birra analcolica": ["birra zero", "birra senza alcol", "alcohol free beer"],
+  Branzino: ["spigola"],
+  Polpo: ["polipo"],
+  Gamberi: ["gamberetti", "mazzancolle"],
+  Cozze: ["mitili"],
+  "Prosciutto crudo": ["crudo"],
+  "Prosciutto cotto": ["cotto"],
+  "Grana grattugiato": ["grana"],
+  "Pane in cassetta": ["pancarrè", "pan carré"],
+  "Pomodori ciliegino": ["pachino", "datterini"],
+  "Macinato di manzo": ["macinata", "carne trita"],
+  Hamburger: ["svizzera"],
+  "Latte senza lattosio": ["latte HD", "latte ad alta digeribilità"],
+  "Caffè macinato": ["moka"],
+  "Caffè decaffeinato": ["deca", "decaffeinato"],
+  "Olio extravergine di oliva": ["EVO"],
+  "Olio di arachidi": ["olio per friggere"],
+  "Rotoloni da cucina": ["carta cucina", "Scottex"],
+  "Pellicola trasparente": ["Domopak"],
+  "Detersivo piatti": ["Svelto"],
+  "Detersivo lavatrice liquido": ["Dash", "Dixan"],
+  Ammorbidente: ["Coccolino"],
+  "Fazzoletti di carta": ["Kleenex", "Tempo"],
+};
+
+/** Ricerche di intento: una parola utile deve proporre piu' prodotti ordinati. */
+const SEARCH_GROUPS: Record<string, readonly string[]> = {
+  "latte vegetale": ["Latte di soia", "Latte di mandorla", "Bevanda d'avena"],
+  insalata: ["Insalata iceberg", "Rucola", "Radicchio"],
+  formaggio: [
+    "Mozzarella",
+    "Stracchino",
+    "Gorgonzola",
+    "Feta",
+    "Taleggio",
+    "Pecorino",
+    "Emmental",
+    "Formaggio caprino",
+    "Formaggio spalmabile",
+  ],
+  affettato: [
+    "Prosciutto cotto",
+    "Prosciutto crudo",
+    "Mortadella",
+    "Salame Milano",
+    "Speck",
+    "Bresaola",
+    "Coppa",
+    "Fesa di tacchino",
+  ],
+  "pesce azzurro": ["Alici", "Sardine", "Filetti di sgombro", "Sgombro in scatola"],
+  "frutti di mare": ["Cozze", "Vongole", "Calamari", "Insalata di mare", "Gamberi", "Polpo", "Seppie"],
+  "verdure surgelate": [
+    "Spinaci surgelati",
+    "Piselli surgelati",
+    "Broccoli surgelati",
+    "Fagiolini surgelati",
+    "Verdure grigliate surgelate",
+    "Funghi surgelati",
+  ],
+  aperitivo: ["Aperol", "Campari", "Crodino", "Sanbittèr", "Select", "Prosecco", "Patatine classiche", "Olive taggiasche"],
+  spritz: ["Spritz pronto", "Aperol", "Campari", "Select", "Prosecco", "Soda per cocktail"],
+  colazione: ["Latte parzialmente scremato", "Caffè macinato", "Biscotti frollini", "Corn flakes", "Fette biscottate"],
+  barbecue: ["Salsiccia", "Hamburger", "Costine di maiale", "Salsa barbecue"],
+  pizza: ["Pizza margherita surgelata", "Mozzarella", "Passata di pomodoro", "Farina 00", "Lievito di birra secco"],
 };
 
 const PRODUCT_NAME_BY_ALIAS = new Map(
@@ -657,6 +721,24 @@ export function productNameForAlias(value: string): string | undefined {
   return PRODUCT_NAME_BY_ALIAS.get(normalizeSearchText(value));
 }
 
+const PRODUCT_NAMES_BY_GROUP = new Map(
+  Object.entries(SEARCH_GROUPS).map(([term, names]) => [normalizeSearchText(term), names] as const),
+);
+
+const GROUP_TERMS_BY_PRODUCT = new Map<string, string[]>();
+for (const [term, names] of Object.entries(SEARCH_GROUPS)) {
+  for (const name of names) {
+    GROUP_TERMS_BY_PRODUCT.set(name, [...(GROUP_TERMS_BY_PRODUCT.get(name) ?? []), term]);
+  }
+}
+
+export function productNamesForSearch(value: string): readonly string[] {
+  const normalized = normalizeSearchText(value);
+  const direct = PRODUCT_NAME_BY_ALIAS.get(normalized);
+  if (direct) return [direct];
+  return PRODUCT_NAMES_BY_GROUP.get(normalized) ?? [];
+}
+
 function rowsOf(catalog: Record<string, Row[]>): ProductSeed[] {
   return Object.entries(catalog).flatMap(([categorySlug, rows]) =>
     rows.map(([name, iconKey, size, brand]) => ({
@@ -665,7 +747,7 @@ function rowsOf(catalog: Record<string, Row[]>): ProductSeed[] {
       iconKey,
       size,
       brand,
-      aliases: SEARCH_ALIASES[name],
+      aliases: [...(SEARCH_ALIASES[name] ?? []), ...(GROUP_TERMS_BY_PRODUCT.get(name) ?? [])],
     })),
   );
 }

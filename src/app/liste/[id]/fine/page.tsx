@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
 import { getList } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
 import type { RouteSnapshot } from "@/lib/route-types";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,8 @@ function minutesBetween(from: Date | null, to: Date | null): number | null {
 
 export default async function DonePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const list = await getList(id);
+  const user = await requireUser();
+  const list = await getList(id, user.id);
   if (!list) notFound();
 
   const snapshot = (list.route?.stops as unknown as RouteSnapshot | undefined) ?? {

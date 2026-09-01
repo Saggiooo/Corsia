@@ -4,10 +4,37 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getStore } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
 import { bfsFrom, parseGrid, UNREACHABLE } from "@/lib/routing/grid";
 import { groupCells } from "@/lib/map/shapes";
 import { buildRoute, type PickClass, type RouteStop } from "@/lib/routing/route";
 import type { OrphanSnapshot, StopSnapshot } from "@/lib/route-types";
+
+/**
+ * Le liste sono personali: ogni azione parte da qui, cosi' un utente non puo'
+ * toccare le liste di un altro passando un id a mano.
+ */
+async function ownedList(listId: string): Promise<{ id: string; userId: string }> {
+  const user = await requireUser();
+  const list = await prisma.list.findFirst({
+    where: { id: listId, userId: user.id },
+    select: { id: true, userId: true },
+  });
+
+  if (!list) throw new Error("Lista non trovata");
+  return list;
+}
+
+async function ownedItem(itemId: string): Promise<{ id: string; listId: string }> {
+  const user = await requireUser();
+  const item = await prisma.listItem.findFirst({
+    where: { id: itemId, list: { userId: user.id } },
+    select: { id: true, listId: true },
+  });
+
+  if (!item) throw new Error("Articolo non trovato");
+  return item;
+}
 
 function defaultListName(): string {
   const now = new Date();
@@ -17,26 +44,30 @@ function defaultListName(): string {
 }
 
 export async function createList() {
+  const user = await requireUser();
   const store = await getStore();
   const list = await prisma.list.create({
-    data: { storeId: store.id, name: defaultListName() },
+    data: { storeId: store.id, userId: user.id, name: defaultListName() },
   });
   revalidatePath("/");
   redirect(`/liste/${list.id}`);
 }
 
 export async function renameList(listId: string, name: string) {
+  await ownedList(listId);
   await prisma.list.update({ where: { id: listId }, data: { name: name.trim() || defaultListName() } });
   revalidatePath(`/liste/${listId}`);
 }
 
 export async function deleteList(listId: string) {
+  await ownedList(listId);
   await prisma.list.delete({ where: { id: listId } });
   revalidatePath("/");
   redirect("/");
 }
 
 export async function addProduct(listId: string, productId: string) {
+  await ownedList(listId);
   const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
   const existing = await prisma.listItem.findFirst({ where: { listId, productId } });
 
@@ -54,6 +85,7 @@ export async function addProduct(listId: string, productId: string) {
 }
 
 export async function addFreeText(listId: string, text: string) {
+  await ownedList(listId);
   const rawText = text.trim();
   if (!rawText) return;
 
@@ -65,7 +97,7 @@ export async function addFreeText(listId: string, text: string) {
 }
 
 export async function setQty(itemId: string, qty: number) {
-  const item = await prisma.listItem.findUniqueOrThrow({ where: { id: itemId } });
+  const item = await ownedItem(itemId);
 
   if (qty <= 0) {
     await prisma.listItem.delete({ where: { id: itemId } });
@@ -78,7 +110,8 @@ export async function setQty(itemId: string, qty: number) {
 }
 
 export async function removeItem(itemId: string) {
-  const item = await prisma.listItem.delete({ where: { id: itemId } });
+  const item = await ownedItem(itemId);
+  await prisma.listItem.delete({ where: { id: itemId } });
   await invalidateRoute(item.listId);
   revalidatePath(`/liste/${item.listId}`);
 }
@@ -89,16 +122,17 @@ export async function removeItem(itemId: string) {
  * posizione a scaffale, quindi non invalida il percorso.
  */
 export async function setNote(itemId: string, note: string): Promise<void> {
-  const trimmed = note.trim();
-  const item = await prisma.listItem.update({
+  const item = await ownedItem(itemId);
+  await prisma.listItem.update({
     where: { id: itemId },
-    data: { note: trimmed || null },
+    data: { note: note.trim() || null },
   });
   revalidatePath(`/liste/${item.listId}`, "layout");
 }
 
 export async function toggleChecked(itemId: string, checked: boolean): Promise<void> {
-  const item = await prisma.listItem.update({
+  const item = await ownedItem(itemId);
+  await prisma.listItem.update({
     where: { id: itemId },
     data: { checked, checkedAt: checked ? new Date() : null },
   });
@@ -110,6 +144,7 @@ export async function toggleChecked(itemId: string, checked: boolean): Promise<v
  * e' il modo in cui la mappa impara mentre si fa la spesa.
  */
 export async function movePlacement(productId: string, locationId: string, level?: number | null) {
+  await requireUser();
   const store = await getStore();
   await prisma.placement.upsert({
     where: { productId_storeId: { productId, storeId: store.id } },
@@ -125,6 +160,7 @@ async function invalidateRoute(listId: string) {
 }
 
 export async function computeRoute(listId: string, mode?: "shortest" | "coldchain") {
+  await ownedList(listId);
   const store = await getStore();
   const [settings, list] = await Promise.all([
     prisma.settings.upsert({ where: { id: "singleton" }, create: {}, update: {} }),
@@ -249,6 +285,7 @@ export async function computeRoute(listId: string, mode?: "shortest" | "coldchai
 }
 
 export async function startShopping(listId: string) {
+  await ownedList(listId);
   await prisma.list.update({
     where: { id: listId },
     data: { status: "shopping", startedAt: new Date() },
@@ -257,16 +294,26 @@ export async function startShopping(listId: string) {
 }
 
 export async function finishShopping(listId: string) {
+  const list = await ownedList(listId);
   const items = await prisma.listItem.findMany({
     where: { listId, checked: true, productId: { not: null } },
     select: { productId: true },
   });
 
   await prisma.$transaction([
+    // Popolarita' globale, usata solo come spareggio nella ricerca.
     ...items.map((item) =>
       prisma.product.update({
         where: { id: item.productId! },
         data: { timesBought: { increment: 1 } },
+      }),
+    ),
+    // Frequenza personale: e' quella che alimenta "comprati spesso".
+    ...items.map((item) =>
+      prisma.purchaseCount.upsert({
+        where: { userId_productId: { userId: list.userId, productId: item.productId! } },
+        create: { userId: list.userId, productId: item.productId!, count: 1 },
+        update: { count: { increment: 1 } },
       }),
     ),
     prisma.list.update({
@@ -279,7 +326,82 @@ export async function finishShopping(listId: string) {
   redirect(`/liste/${listId}/fine`);
 }
 
+// --- Preferiti e prodotti salvati ----------------------------------------
+
+/** La stella sul supermercato. */
+export async function toggleFavoriteStore(storeId: string) {
+  const user = await requireUser();
+  const existing = await prisma.favoriteStore.findUnique({
+    where: { userId_storeId: { userId: user.id, storeId } },
+  });
+
+  if (existing) {
+    await prisma.favoriteStore.delete({ where: { userId_storeId: { userId: user.id, storeId } } });
+  } else {
+    await prisma.favoriteStore.create({ data: { userId: user.id, storeId } });
+  }
+
+  revalidatePath("/");
+}
+
+/**
+ * Mette da parte un prodotto con la nota che gli hai scritto, cosi' la prossima
+ * volta lo ripeschi gia' personalizzato invece di riscriverla.
+ */
+export async function saveProduct(productId: string, note: string) {
+  const user = await requireUser();
+
+  await prisma.savedProduct.upsert({
+    where: { userId_productId_note: { userId: user.id, productId, note: note.trim() } },
+    create: { userId: user.id, productId, note: note.trim() },
+    update: {},
+  });
+
+  revalidatePath("/", "layout");
+}
+
+export async function removeSavedProduct(savedId: string) {
+  const user = await requireUser();
+  await prisma.savedProduct.deleteMany({ where: { id: savedId, userId: user.id } });
+  revalidatePath("/", "layout");
+}
+
+/** Aggiunge alla lista un prodotto salvato, riportandosi dietro la sua nota. */
+export async function addSavedProduct(listId: string, savedId: string) {
+  const user = await requireUser();
+  await ownedList(listId);
+
+  const saved = await prisma.savedProduct.findFirst({
+    where: { id: savedId, userId: user.id },
+    include: { product: true },
+  });
+  if (!saved) throw new Error("Prodotto salvato non trovato");
+
+  const existing = await prisma.listItem.findFirst({
+    where: { listId, productId: saved.productId, note: saved.note || null },
+  });
+
+  if (existing) {
+    await prisma.listItem.update({ where: { id: existing.id }, data: { qty: existing.qty + 1 } });
+  } else {
+    const count = await prisma.listItem.count({ where: { listId } });
+    await prisma.listItem.create({
+      data: {
+        listId,
+        productId: saved.productId,
+        rawText: saved.product.name,
+        note: saved.note || null,
+        sortIndex: count,
+      },
+    });
+  }
+
+  await invalidateRoute(listId);
+  revalidatePath(`/liste/${listId}`);
+}
+
 export async function setRouteMode(mode: "shortest" | "coldchain") {
+  await requireUser();
   await prisma.settings.upsert({
     where: { id: "singleton" },
     create: { routeMode: mode },
@@ -307,6 +429,7 @@ export async function saveMap(input: {
   entrance: [number, number];
   checkout: [number, number];
 }): Promise<{ blocked: string[]; unreachable: string[] }> {
+  await requireUser();
   const store = await getStore();
 
   const blockedKinds = new Set(["shelf", "counter", "fridge", "freezer", "checkout", "wall", "promo"]);

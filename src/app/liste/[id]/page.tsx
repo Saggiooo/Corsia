@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { ListEditor, type EditorItem } from "@/components/list/ListEditor";
 import { ListHeader } from "@/components/list/ListHeader";
-import { getCategories, getList, getMostBought } from "@/lib/queries";
+import { getCategories, getList, getMostBought, getSavedProducts } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +15,20 @@ function shortLocation(label?: string | null, aisleName?: string | null): string
 
 export default async function ListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [list, categories, frequent] = await Promise.all([getList(id), getCategories(), getMostBought()]);
+  const user = await requireUser();
+  const [list, categories, frequent, saved] = await Promise.all([
+    getList(id, user.id),
+    getCategories(),
+    getMostBought(user.id),
+    getSavedProducts(user.id),
+  ]);
   if (!list) notFound();
 
   const items: EditorItem[] = list.items.map((item) => {
     const placement = item.product?.placements[0];
     return {
       id: item.id,
+      productId: item.productId,
       name: item.product?.name ?? item.rawText,
       size: item.product?.size ?? null,
       note: item.note,
@@ -54,6 +62,15 @@ export default async function ListPage({ params }: { params: Promise<{ id: strin
           iconKey: p.iconKey,
           categoryIcon: p.category.iconKey,
           colorToken: p.category.colorToken,
+        }))}
+        saved={saved.map((row) => ({
+          id: row.id,
+          productId: row.productId,
+          name: row.product.name,
+          note: row.note,
+          iconKey: row.product.iconKey,
+          categoryIcon: row.product.category.iconKey,
+          colorToken: row.product.category.colorToken,
         }))}
       />
     </main>

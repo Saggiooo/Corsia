@@ -11,5 +11,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Catalogo prodotti
 
 - Mantieni invariato il catalogo storico in `CATALOG`; inserisci le nuove voci curate in `EXPANSION`.
-- I termini equivalenti di ricerca (vitigni, stili di birra e nomi comuni) appartengono a `SEARCH_ALIASES`, così puntano a un solo prodotto canonico.
+- I termini equivalenti di ricerca appartengono a `SEARCH_ALIASES`; le intenzioni che devono proporre più risultati appartengono a `SEARCH_GROUPS`.
 - Dopo modifiche al catalogo esegui `npm run db:seed`: le posizioni confermate manualmente non devono essere sovrascritte.

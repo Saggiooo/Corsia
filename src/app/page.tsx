@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { createList } from "@/app/actions";
+import { createList, toggleFavoriteStore } from "@/app/actions";
+import { Icon } from "@/components/icons/Icon";
 import { StoreMap } from "@/components/map/StoreMap";
 import { Wordmark } from "@/components/ui/Wordmark";
-import { getLists, getMapData, getStore } from "@/lib/queries";
+import { getLists, getMapData, getStore, isFavoriteStore } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
+import { signOutAction } from "@/app/accedi/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,21 +22,33 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function HomePage() {
-  const [store, map, lists] = await Promise.all([getStore(), getMapData(), getLists()]);
+  const user = await requireUser();
+  const [store, map, lists] = await Promise.all([getStore(), getMapData(), getLists(user.id)]);
+  const favorite = await isFavoriteStore(user.id, store.id);
 
   return (
     <main className="mx-auto w-full max-w-lg px-5 pt-10 pb-32">
       <header className="flex items-end justify-between">
         <div>
-          <p className="tag text-[var(--color-ink-3)]">La spesa in ordine di corsia</p>
+          <p className="tag text-[var(--color-ink-3)]">Ciao {user.firstName}</p>
           <Wordmark className="mt-1" />
         </div>
-        <Link
-          href="/mappa"
-          className="mb-2 rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] active:bg-[var(--color-paper-2)]"
-        >
-          Mappa
-        </Link>
+        <div className="mb-2 flex items-center gap-2">
+          <Link
+            href="/mappa"
+            className="rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] active:bg-[var(--color-paper-2)]"
+          >
+            Mappa
+          </Link>
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              className="rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-3)] active:bg-[var(--color-paper-2)]"
+            >
+              Esci
+            </button>
+          </form>
+        </div>
       </header>
 
       <section className="plate grain relative mt-8 overflow-hidden">
@@ -43,7 +58,21 @@ export default async function HomePage() {
             <h2 className="font-display mt-1 text-2xl leading-tight">{store.name}</h2>
             <p className="mt-1 text-sm text-[var(--color-ink-3)]">{store.address}</p>
           </div>
-          <span className="mt-1 flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--color-brand)] shadow-[0_0_0_4px_var(--color-brand-soft)]" />
+          <form action={toggleFavoriteStore.bind(null, store.id)}>
+            <button
+              type="submit"
+              aria-label={favorite ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+              aria-pressed={favorite}
+              className="flex h-10 w-10 items-center justify-center rounded-full transition-transform active:scale-90"
+              style={
+                favorite
+                  ? { background: "var(--bakery-soft)", color: "var(--bakery)" }
+                  : { color: "var(--color-ink-3)" }
+              }
+            >
+              <Icon name="star" size={22} />
+            </button>
+          </form>
         </div>
 
         <div className="h-44 px-2 pb-2 opacity-90">

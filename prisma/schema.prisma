@@ -70,6 +70,7 @@ model Store {
   locations  Location[]
   placements Placement[]
   lists      List[]
+  favorites  FavoriteStore[]
 }
 
 /// Corsia. `sequence` e' l'ordine naturale di percorrenza, usato come seed
@@ -163,9 +164,11 @@ model Product {
   searchText  String
   timesBought Int     @default(0)
 
-  category   Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  placements Placement[]
-  listItems  ListItem[]
+  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  placements     Placement[]
+  listItems      ListItem[]
+  savedProducts  SavedProduct[]
+  purchaseCounts PurchaseCount[]
 
   @@index([categoryId])
 }
@@ -189,9 +192,82 @@ model Placement {
   @@index([locationId])
 }
 
+/// Utenti creati a mano da scripts/user.mts: niente registrazione pubblica.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  createdAt    DateTime @default(now())
+
+  sessions  Session[]
+  lists     List[]
+  favorites FavoriteStore[]
+  saved     SavedProduct[]
+  purchases PurchaseCount[]
+}
+
+/// Del token si conserva solo l'impronta sha256.
+model Session {
+  id          String   @id @default(cuid())
+  fingerprint String   @unique
+  userId      String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Supermercati marcati con la stella.
+model FavoriteStore {
+  userId    String
+  storeId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, storeId])
+}
+
+/// Prodotto messo da parte con la sua nota gia' scritta, pronto da riusare.
+/// `note` e' stringa vuota e non NULL cosi' il vincolo di unicita' funziona.
+model SavedProduct {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId, note])
+  @@index([userId])
+}
+
+/// Quante volte questo utente ha comprato questo prodotto.
+model PurchaseCount {
+  userId    String
+  productId String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([userId, count])
+}
+
 model List {
   id          String     @id @default(cuid())
   storeId     String
+  userId      String
   name        String
   status      ListStatus @default(draft)
   createdAt   DateTime   @default(now())
@@ -200,9 +276,11 @@ model List {
   completedAt DateTime?
 
   store Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   items ListItem[]
   route Route?
 
+  @@index([userId, createdAt])
   @@index([storeId, createdAt])
 }
 

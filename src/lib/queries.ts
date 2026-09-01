@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { MapFixture, MapLabel } from "@/components/map/StoreMap";
-import { normalizeSearchText, productNameForAlias } from "@/lib/store/catalog";
+import { normalizeSearchText, productNamesForSearch } from "@/lib/store/catalog";
 
 export const STORE_SLUG = "extracoop-villanova";
 
@@ -93,9 +93,10 @@ export type SearchHit = {
 export async function searchProducts(query: string, limit = 24): Promise<SearchHit[]> {
   const term = normalizeSearchText(query);
   if (term.length < 2) return [];
-  const preferredName = productNameForAlias(query) ?? "";
+  const preferredNames = productNamesForSearch(query);
+  const queryLimit = limit + preferredNames.length;
 
-  return prisma.$queryRaw<SearchHit[]>`
+  const hits = await prisma.$queryRaw<SearchHit[]>`
     SELECT p.id,
            p.name,
            p.brand,
@@ -114,30 +115,40 @@ export async function searchProducts(query: string, limit = 24): Promise<SearchH
     LEFT JOIN "Aisle" a ON a.id = l."aisleId"
     WHERE p."searchText" ILIKE '%' || ${term} || '%'
        OR p."searchText" % ${term}
-    ORDER BY (p.name = ${preferredName}) DESC,
-             (p."searchText" ILIKE ${term} || '%') DESC,
+    ORDER BY (p."searchText" ILIKE ${term} || '%') DESC,
              similarity(p."searchText", ${term}) DESC,
              p."timesBought" DESC,
              p.name ASC
-    LIMIT ${limit}
+    LIMIT ${queryLimit}
   `;
+
+  if (preferredNames.length === 0) return hits.slice(0, limit);
+
+  const preferredOrder = new Map(preferredNames.map((name, index) => [name, index]));
+  return hits
+    .map((hit, index) => ({ hit, index, preferred: preferredOrder.get(hit.name) }))
+    .sort((a, b) => (a.preferred ?? Number.MAX_SAFE_INTEGER) - (b.preferred ?? Number.MAX_SAFE_INTEGER) || a.index - b.index)
+    .slice(0, limit)
+    .map(({ hit }) => hit);
 }
 
 export async function getCategories() {
   return prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
 }
 
-export async function getLists() {
+export async function getLists(userId: string) {
   return prisma.list.findMany({
+    where: { userId },
     orderBy: { createdAt: "desc" },
     take: 20,
     include: { _count: { select: { items: true } }, items: { select: { checked: true } } },
   });
 }
 
-export async function getList(id: string) {
-  return prisma.list.findUnique({
-    where: { id },
+/** Filtra per proprietario: un id indovinato non basta ad aprire la lista altrui. */
+export async function getList(id: string, userId: string) {
+  return prisma.list.findFirst({
+    where: { id, userId },
     include: {
       route: true,
       items: {
@@ -155,11 +166,31 @@ export async function getList(id: string) {
   });
 }
 
-export async function getMostBought(limit = 12) {
-  return prisma.product.findMany({
-    where: { timesBought: { gt: 0 } },
-    orderBy: [{ timesBought: "desc" }, { name: "asc" }],
+/** I prodotti che questo utente compra piu' spesso. */
+export async function getMostBought(userId: string, limit = 12) {
+  const counts = await prisma.purchaseCount.findMany({
+    where: { userId, count: { gt: 0 } },
+    orderBy: [{ count: "desc" }],
     take: limit,
-    include: { category: true },
+    include: { product: { include: { category: true } } },
   });
+
+  return counts.map((row) => row.product);
+}
+
+/** Prodotti messi da parte, con la nota gia' scritta. */
+export async function getSavedProducts(userId: string) {
+  return prisma.savedProduct.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    include: { product: { include: { category: true } } },
+  });
+}
+
+export async function isFavoriteStore(userId: string, storeId: string): Promise<boolean> {
+  const favorite = await prisma.favoriteStore.findUnique({
+    where: { userId_storeId: { userId, storeId } },
+  });
+
+  return favorite !== null;
 }

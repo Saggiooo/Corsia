@@ -2,13 +2,15 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { RouteView } from "@/components/route/RouteView";
 import { getList, getMapData } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
 import type { RouteSnapshot } from "@/lib/route-types";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoutePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [list, map] = await Promise.all([getList(id), getMapData()]);
+  const user = await requireUser();
+  const [list, map] = await Promise.all([getList(id, user.id), getMapData()]);
 
   if (!list) notFound();
   if (!list.route) redirect(`/liste/${id}`);

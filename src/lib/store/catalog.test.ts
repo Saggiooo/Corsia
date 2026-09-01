@@ -5,6 +5,7 @@ import {
   CATEGORIES,
   PRODUCTS,
   normalizeSearchText,
+  productNamesForSearch,
   productNameForAlias,
   searchTextOf,
   slugify,
@@ -77,5 +78,45 @@ describe("catalogo prodotti", () => {
     const matches = PRODUCTS.filter((row) => searchTextOf(row).includes(term));
     expect(matches.map((row) => row.name)).toContain(expected);
     expect(productNameForAlias(query)).toBe(expected);
+  });
+
+  test.each([
+    ["spigola", "Branzino"],
+    ["polipo", "Polpo"],
+    ["pancarrè", "Pane in cassetta"],
+    ["carne trita", "Macinato di manzo"],
+    ["latte HD", "Latte senza lattosio"],
+    ["EVO", "Olio extravergine di oliva"],
+    ["Scottex", "Rotoloni da cucina"],
+    ["Svelto", "Detersivo piatti"],
+  ])("risolve l'alias di catalogo %s come %s", (query, expected) => {
+    expect(productNamesForSearch(query)).toEqual([expected]);
+  });
+
+  test.each([
+    ["latte vegetale", ["Latte di soia", "Latte di mandorla", "Bevanda d'avena"]],
+    ["spritz", ["Spritz pronto", "Aperol", "Campari", "Select", "Prosecco", "Soda per cocktail"]],
+    ["barbecue", ["Salsiccia", "Hamburger", "Costine di maiale", "Salsa barbecue"]],
+  ])("espande il gruppo %s nell'ordine atteso", (query, expected) => {
+    expect(productNamesForSearch(query)).toEqual(expected);
+  });
+
+  test("tutti i prodotti dei gruppi esistono nel catalogo", () => {
+    for (const query of [
+      "latte vegetale",
+      "insalata",
+      "formaggio",
+      "affettato",
+      "pesce azzurro",
+      "frutti di mare",
+      "verdure surgelate",
+      "aperitivo",
+      "spritz",
+      "colazione",
+      "barbecue",
+      "pizza",
+    ]) {
+      expect(productNamesForSearch(query).filter((name) => !product(name))).toEqual([]);
+    }
   });
 });

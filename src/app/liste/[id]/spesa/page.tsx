@@ -2,13 +2,15 @@ import { notFound, redirect } from "next/navigation";
 import { ShopMode, type PickLocation } from "@/components/route/ShopMode";
 import { prisma } from "@/lib/db";
 import { getList, getMapData, getStore } from "@/lib/queries";
+import { requireUser } from "@/lib/auth/session";
 import type { RouteSnapshot } from "@/lib/route-types";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShopPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [list, map, store] = await Promise.all([getList(id), getMapData(), getStore()]);
+  const user = await requireUser();
+  const [list, map, store] = await Promise.all([getList(id, user.id), getMapData(), getStore()]);
 
   if (!list) notFound();
   if (!list.route) redirect(`/liste/${id}`);

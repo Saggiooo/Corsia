@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { addFreeText, addProduct, removeItem, routeAndOpen, setNote, setQty } from "@/app/actions";
+import {
+  addFreeText,
+  addProduct,
+  addSavedProduct,
+  removeItem,
+  removeSavedProduct,
+  routeAndOpen,
+  saveProduct,
+  setNote,
+  setQty,
+} from "@/app/actions";
 import { Icon } from "@/components/icons/Icon";
 import { AisleBadge } from "@/components/ui/AisleBadge";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
@@ -9,6 +19,7 @@ import type { SearchHit } from "@/lib/queries";
 
 export type EditorItem = {
   id: string;
+  productId: string | null;
   name: string;
   size: string | null;
   note: string | null;
@@ -32,14 +43,28 @@ export type FrequentProduct = {
   colorToken: string;
 };
 
+export type SavedEntry = {
+  id: string;
+  productId: string;
+  name: string;
+  note: string;
+  iconKey: string | null;
+  categoryIcon: string;
+  colorToken: string;
+};
+
 type Props = {
   listId: string;
   items: EditorItem[];
   categories: EditorCategory[];
   frequent: FrequentProduct[];
+  saved: SavedEntry[];
 };
 
-export function ListEditor({ listId, items, categories, frequent }: Props) {
+/** Valore speciale del filtro: mostra i prodotti salvati invece di un reparto. */
+const SAVED = "__salvati__";
+
+export function ListEditor({ listId, items, categories, frequent, saved }: Props) {
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
@@ -48,9 +73,10 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
   const [pending, startTransition] = useTransition();
 
   const browsing = query.trim().length >= 2 || category !== null;
+  const showingSaved = category === SAVED;
 
   useEffect(() => {
-    if (!browsing) {
+    if (!browsing || showingSaved) {
       setHits([]);
       return;
     }
@@ -76,9 +102,14 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [query, category, browsing]);
+  }, [query, category, browsing, showingSaved]);
 
   const inList = useMemo(() => new Map(items.map((i) => [i.name, i])), [items]);
+
+  const savedKeys = useMemo(
+    () => new Set(saved.map((entry) => `${entry.productId}::${entry.note}`)),
+    [saved],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, EditorItem[]>();
@@ -122,6 +153,29 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
         </div>
 
         <div className="no-scrollbar -mx-5 mt-2.5 flex gap-2 overflow-x-auto px-5">
+          {saved.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setCategory(category === SAVED ? null : SAVED);
+                setQuery("");
+              }}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+              style={
+                showingSaved
+                  ? { background: "var(--color-ink)", borderColor: "transparent", color: "var(--color-paper)" }
+                  : {
+                      background: "var(--color-paper-2)",
+                      borderColor: "var(--color-line)",
+                      color: "var(--color-ink-2)",
+                    }
+              }
+            >
+              <Icon name="bookmark" size={15} />
+              Salvati
+            </button>
+          )}
+
           {categories.map((c) => (
             <button
               key={c.slug}
@@ -152,7 +206,49 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
         </div>
       </div>
 
-      {browsing ? (
+      {showingSaved ? (
+        <section className="mt-2 pb-28">
+          <p className="mb-3 text-sm text-[var(--color-ink-3)]">
+            Prodotti messi da parte con la loro nota. Toccali per aggiungerli già personalizzati.
+          </p>
+          <ul className="space-y-2">
+            {saved.map((entry, i) => (
+              <li key={entry.id} style={{ animation: `rise .28s ${Math.min(i, 12) * 25}ms both` }}>
+                <div className="plate flex items-center gap-3 p-3">
+                  <button
+                    type="button"
+                    onClick={() => startTransition(() => addSavedProduct(listId, entry.id))}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <ProductAvatar
+                      iconKey={entry.iconKey}
+                      fallback={entry.categoryIcon}
+                      colorToken={entry.colorToken}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{entry.name}</span>
+                      {entry.note ? (
+                        <span className="block truncate text-[13px] text-[var(--color-signal)]">{entry.note}</span>
+                      ) : null}
+                    </span>
+                    <span className="font-display flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-paper-2)] text-lg">
+                      +
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Togli ${entry.name} dai salvati`}
+                    onClick={() => startTransition(() => removeSavedProduct(entry.id))}
+                    className="shrink-0 text-[var(--color-ink-3)]"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : browsing ? (
         <section className="mt-2 pb-24">
           {searching && hits.length === 0 && (
             <p className="py-8 text-center text-sm text-[var(--color-ink-3)]">Cerco…</p>
@@ -317,6 +413,23 @@ export function ListEditor({ listId, items, categories, frequent }: Props) {
                           </div>
 
                           <div className="flex items-center gap-1">
+                            {item.productId && (
+                              <button
+                                type="button"
+                                aria-label={`Salva ${item.name} con la sua nota`}
+                                onClick={() =>
+                                  startTransition(() => saveProduct(item.productId!, item.note ?? ""))
+                                }
+                                className="flex h-7 w-7 items-center justify-center rounded-full"
+                                style={
+                                  savedKeys.has(`${item.productId}::${item.note ?? ""}`)
+                                    ? { background: "var(--color-brand-soft)", color: "var(--color-brand)" }
+                                    : { color: "var(--color-ink-3)" }
+                                }
+                              >
+                                <Icon name="bookmark" size={15} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               aria-label={`Aggiungi una nota a ${item.name}`}
