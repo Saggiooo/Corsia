@@ -270,9 +270,13 @@ database.
 Corsia non sa dove sei davvero: non c'e' posizionamento indoor. Sa pero' da
 dove vieni e dove devi arrivare, quindi la vista ravvicinata inquadra **la
 tratta corrente**, non una posizione: il tratto fra la tappa precedente e
-quella attuale, con i metri da fare e lo scaffale bersaglio marcato sul lato
-giusto del corridoio. Sotto resta la mappa d'insieme. Entrambe si aggiornano a
-ogni "Preso".
+quella attuale, entrambi i punti visibili, con i metri da fare e lo scaffale
+bersaglio marcato sul lato giusto del corridoio. La tratta in corso e'
+disegnata in indaco sopra il resto del percorso, che resta sbiadito.
+
+Quando la tappa successiva e' sullo **stesso scaffale** di quella appena presa
+non ci si sposta: la visuale resta ferma dov'era, non compare nessuna tratta
+in evidenza e i metri sono 0. Restare fermi non deve far saltare la mappa.
 
 Le tappe che condividono lo stesso scaffale diventano un pin solo con
 l'intervallo ("5–6"): disegnate una sopra l'altra sarebbero illeggibili.
@@ -303,8 +307,9 @@ prima di chiedere conferma.
 cambiano nome e ordine di percorrenza, e le etichette dei punti di prelievo
 seguono.
 
-Poi da `/admin/posizioni` si assegnano i prodotti, un reparto alla volta col
-pulsante "Tutto il reparto".
+Poi da `/admin/posizioni` si assegnano i prodotti: si scelgono quelli da
+spostare (o si sposta tutto il reparto) e si indica dove toccando la mappa,
+con lo stesso gesto del "Non e' qui" della modalita' spesa.
 
 Se qualche punto di prelievo finisce sotto un blocco o diventa irraggiungibile
 dall'ingresso, il salvataggio lo dice invece di nasconderlo.

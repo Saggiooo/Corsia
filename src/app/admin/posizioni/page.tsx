@@ -4,6 +4,7 @@ import { StorePicker } from "@/components/admin/StorePicker";
 import {
   getCategories,
   getCategoryPlacements,
+  getMapData,
   getMappedStores,
   getPickLocations,
   getStoresForAdmin,
@@ -54,9 +55,10 @@ export default async function PositionsPage({
 
   const category = categories.find((c) => c.slug === reparto) ?? categories[0];
 
-  const [products, locations] = await Promise.all([
+  const [products, locations, map] = await Promise.all([
     getCategoryPlacements(category.slug, store.id),
     getPickLocations(store.id),
+    getMapData(store.id),
   ]);
 
   return (
@@ -103,6 +105,7 @@ export default async function PositionsPage({
         categorySlug={category.slug}
         products={products}
         locations={locations}
+        map={map}
       />
     </>
   );

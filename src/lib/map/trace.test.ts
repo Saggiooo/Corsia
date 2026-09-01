@@ -72,7 +72,7 @@ describe("roundedPathD", () => {
 });
 
 describe("splitLegs", () => {
-  test("spezza il tracciato in tratte che finiscono su ogni tappa", () => {
+  test("restituisce una tratta per ogni tappa, piu' quella finale", () => {
     const path = [
       { x: 0, y: 0 },
       { x: 1, y: 0 },
@@ -105,21 +105,65 @@ describe("splitLegs", () => {
     expect(legs[1][0]).toEqual({ x: 2, y: 0 });
   });
 
-  test("una tappa visitata due volte usa il primo passaggio utile", () => {
+  /**
+   * Piu' prodotti sullo stesso scaffale: la tappa successiva e' dove sei gia'.
+   * La tratta deve essere il solo punto, cosi' chi la usa sa che non ci si
+   * sposta e puo' lasciare la mappa ferma invece di inquadrare altrove.
+   */
+  test("una tappa sulla stessa cella della precedente da' una tratta di un punto solo", () => {
     const path = [
       { x: 0, y: 0 },
       { x: 1, y: 0 },
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
+      { x: 2, y: 0 },
     ];
 
     const legs = splitLegs(path, [
       { x: 1, y: 0 },
-      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 1, y: 0 },
     ]);
 
+    expect(legs).toHaveLength(4);
     expect(legs[0]).toHaveLength(2);
-    expect(legs[1].at(-1)).toEqual({ x: 0, y: 0 });
+    expect(legs[1]).toEqual([{ x: 1, y: 0 }]);
+    expect(legs[2]).toEqual([{ x: 1, y: 0 }]);
+    expect(legs[3].at(-1)).toEqual({ x: 2, y: 0 });
+  });
+
+  test("l'indice della tratta corrisponde sempre all'indice della tappa", () => {
+    const path = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+      { x: 3, y: 0 },
+    ];
+    const stops = [
+      { x: 1, y: 0 },
+      { x: 1, y: 0 },
+      { x: 3, y: 0 },
+    ];
+
+    const legs = splitLegs(path, stops);
+
+    stops.forEach((stop, i) => expect(legs[i].at(-1)).toEqual(stop));
+  });
+
+  test("una tappa che non compare nel tracciato non sposta le altre", () => {
+    const path = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+    ];
+    const stops = [
+      { x: 9, y: 9 },
+      { x: 2, y: 0 },
+    ];
+
+    const legs = splitLegs(path, stops);
+
+    expect(legs).toHaveLength(3);
+    expect(legs[0]).toEqual([]);
+    expect(legs[1].at(-1)).toEqual({ x: 2, y: 0 });
   });
 
   test("senza tappe restituisce il tracciato intero come unica tratta", () => {

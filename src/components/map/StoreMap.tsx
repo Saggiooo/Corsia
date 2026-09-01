@@ -25,6 +25,8 @@ type Props = {
   checkout: [number, number];
   labels?: MapLabel[];
   path?: number[][];
+  /** Tratta in corso: disegnata sopra il percorso, in un colore suo. */
+  legPath?: number[][];
   stops?: MapStop[];
   activeIndex?: number;
   /** Inquadra solo questa porzione di mappa invece di tutto il negozio. */
@@ -53,6 +55,7 @@ export function StoreMap({
   checkout,
   labels = [],
   path,
+  legPath,
   stops = [],
   activeIndex,
   focus,
@@ -73,6 +76,28 @@ export function StoreMap({
       })),
     [fixtures],
   );
+
+  const smooth = useCallback(
+    (cells: number[][], anchors: { x: number; y: number }[]) => {
+      if (cells.length < 2) return null;
+
+      const parsed = parseGrid(grid);
+      const points: Point[] = cells.map(([x, y]) => ({ x, y }));
+
+      return splitLegs(points, anchors)
+        .map((leg) =>
+          roundedPathD(
+            pullString(parsed, leg).map((p) => ({ x: p.x + 0.5, y: p.y + 0.5 })),
+            0.9,
+          ),
+        )
+        .filter(Boolean)
+        .join(" ");
+    },
+    [grid],
+  );
+
+  const legTrace = useMemo(() => (legPath ? smooth(legPath, []) : null), [legPath, smooth]);
 
   const trace = useMemo(() => {
     if (!path || path.length < 2) return null;
@@ -306,6 +331,7 @@ export function StoreMap({
                 d={trace}
                 fill="none"
                 stroke="var(--color-signal)"
+                strokeOpacity={legTrace ? 0.34 : 1}
                 strokeWidth={0.55}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -313,6 +339,33 @@ export function StoreMap({
                 strokeDasharray={1}
                 strokeDashoffset={1}
                 style={{ animation: "draw 1.6s cubic-bezier(.22,.61,.36,1) forwards" }}
+              />
+            </>
+          )}
+
+          {/* Tratta in corso */}
+          {legTrace && (
+            <>
+              <path
+                d={legTrace}
+                fill="none"
+                stroke="var(--color-leg)"
+                strokeOpacity={0.16}
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d={legTrace}
+                fill="none"
+                stroke="var(--color-leg)"
+                strokeWidth={0.62}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pathLength={1}
+                strokeDasharray={1}
+                strokeDashoffset={1}
+                style={{ animation: "draw 1.1s cubic-bezier(.22,.61,.36,1) forwards" }}
               />
             </>
           )}

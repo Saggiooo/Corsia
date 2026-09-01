@@ -19,6 +19,8 @@
   --color-brand-soft: #dbeee2;
   --color-signal: #e2590a;
   --color-signal-soft: #fce4d2;
+  /* Riservato alla tratta che stai percorrendo adesso. */
+  --color-leg: #3a49a6;
 
   --font-display: var(--font-bricolage), "Trebuchet MS", sans-serif;
   --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;

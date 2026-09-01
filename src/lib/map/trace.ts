@@ -87,30 +87,47 @@ function f(value: number): number {
 }
 
 /**
- * Spezza il tracciato in tratte che terminano su ogni tappa, nell'ordine in cui
- * vengono visitate. Serve perche' lo string-pulling va applicato tratta per
- * tratta: sull'intero percorso taglierebbe via le discese in corsia.
+ * Spezza il tracciato in tratte, una per tappa piu' quella finale verso le
+ * casse. Serve perche' lo string-pulling va applicato tratta per tratta: sul
+ * percorso intero taglierebbe via le discese in corsia.
+ *
+ * L'indice della tratta corrisponde sempre all'indice della tappa, anche
+ * quando una tappa non compare nel tracciato: chi legge `legs[i]` sa di avere
+ * fra le mani la tratta di `stops[i]` e non quella di un'altra.
+ *
+ * Una tappa sulla stessa cella della precedente (piu' prodotti sullo stesso
+ * scaffale) da' una tratta di un punto solo: non ci si sposta.
  */
 export function splitLegs(path: Point[], stops: Point[]): Point[][] {
   if (path.length === 0) return [];
 
   const legs: Point[][] = [];
-  let start = 0;
+  let anchor = 0;
 
   for (const stop of stops) {
+    if (path[anchor].x === stop.x && path[anchor].y === stop.y) {
+      legs.push([path[anchor]]);
+      continue;
+    }
+
     let index = -1;
-    for (let i = start + 1; i < path.length; i++) {
+    for (let i = anchor + 1; i < path.length; i++) {
       if (path[i].x === stop.x && path[i].y === stop.y) {
         index = i;
         break;
       }
     }
-    if (index === -1) continue;
 
-    legs.push(path.slice(start, index + 1));
-    start = index;
+    if (index === -1) {
+      // Tappa fuori dal tracciato: tratta vuota, ma il posto resta occupato.
+      legs.push([]);
+      continue;
+    }
+
+    legs.push(path.slice(anchor, index + 1));
+    anchor = index;
   }
 
-  legs.push(path.slice(start));
+  legs.push(path.slice(anchor));
   return legs;
 }

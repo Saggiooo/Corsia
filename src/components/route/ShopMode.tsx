@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { createReport, finishShopping, movePlacement, toggleChecked } from "@/app/actions";
+import { LocationPicker } from "@/components/map/LocationPicker";
 import { StoreMap, type Focus, type MapFixture, type MapLabel } from "@/components/map/StoreMap";
 import { splitLegs } from "@/lib/map/trace";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
@@ -71,7 +72,6 @@ export function ShopMode({
     return first === -1 ? Math.max(stops.length - 1, 0) : first;
   });
   const [relocating, setRelocating] = useState(false);
-  const [candidate, setCandidate] = useState<PickLocation | null>(null);
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
   const [, startTransition] = useTransition();
@@ -91,20 +91,35 @@ export function ShopMode({
    * L'app non sa dove sei davvero: sa da dove vieni e dove devi arrivare.
    * La vista ravvicinata inquadra quella tratta, non una posizione.
    */
-  const leg = useMemo(() => {
+  const legs = useMemo(() => {
     const cells = path.map(([x, y]) => ({ x, y }));
-    const legs = splitLegs(
+    return splitLegs(
       cells,
       stops.map((s) => ({ x: s.x, y: s.y })),
     );
-    return legs[index] ?? [];
-  }, [path, stops, index]);
+  }, [path, stops]);
+
+  const leg = legs[index] ?? [];
+
+  /** Piu' prodotti sullo stesso scaffale: non ci si sposta. */
+  const samePlace = leg.length <= 1;
+
+  /**
+   * Restando fermi la visuale non deve cambiare: si tiene inquadrata l'ultima
+   * tratta percorsa davvero, invece di saltare altrove.
+   */
+  const framedLeg = useMemo(() => {
+    for (let i = index; i >= 0; i--) {
+      if ((legs[i]?.length ?? 0) > 1) return legs[i];
+    }
+    return leg;
+  }, [legs, index, leg]);
 
   const focus = useMemo<Focus | undefined>(() => {
-    if (leg.length === 0) return undefined;
+    if (framedLeg.length === 0) return undefined;
 
-    const xs = leg.map((p) => p.x);
-    const ys = leg.map((p) => p.y);
+    const xs = framedLeg.map((p) => p.x);
+    const ys = framedLeg.map((p) => p.y);
     const margin = 3;
 
     let x0 = Math.min(...xs) - margin;
@@ -123,7 +138,7 @@ export function ShopMode({
     [y0, y1] = grow(y0, y1);
 
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-  }, [leg]);
+  }, [framedLeg]);
 
   const legMeters = Math.round((Math.max(leg.length - 1, 0) * cellSizeCm) / 100);
 
@@ -145,36 +160,16 @@ export function ShopMode({
     startTransition(() => toggleChecked(stop.itemId, false));
   };
 
-  const pickCell = (x: number, y: number) => {
-    let best: PickLocation | null = null;
-    let bestDistance = Infinity;
-
-    for (const location of locations) {
-      const distance = Math.abs(location.accessX - x) + Math.abs(location.accessY - y);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = location;
-      }
-    }
-
-    if (best && bestDistance <= 4) {
-      buzz(8);
-      setCandidate(best);
-    }
-  };
-
-  const confirmMove = () => {
+  const confirmMove = (location: PickLocation | null) => {
     if (!stop?.productId) return;
     const productId = stop.productId;
-    const locationId = candidate?.id ?? null;
 
     buzz([10, 40, 10]);
     setRelocating(false);
-    setCandidate(null);
 
     if (canEdit) {
-      if (!locationId) return;
-      startTransition(() => movePlacement(productId, locationId));
+      if (!location) return;
+      startTransition(() => movePlacement(productId, location.id));
       return;
     }
 
@@ -182,7 +177,12 @@ export function ShopMode({
     setMessage("");
     setSent(true);
     startTransition(() =>
-      createReport({ productId, storeId, suggestedLocationId: locationId, message: note }),
+      createReport({
+        productId,
+        storeId,
+        suggestedLocationId: location?.id ?? null,
+        message: note,
+      }),
     );
   };
 
@@ -263,8 +263,15 @@ export function ShopMode({
 
         <div className="plate mt-7 overflow-hidden">
           <div className="flex items-baseline justify-between px-4 pt-3">
-            <p className="tag text-[var(--color-ink-3)]">Da qui allo scaffale</p>
-            <p className="font-display text-sm text-[var(--color-signal)]">{legMeters} m</p>
+            <p className="tag text-[var(--color-ink-3)]">
+              {samePlace ? "Stesso scaffale di prima" : "Da qui allo scaffale"}
+            </p>
+            <p
+              className="font-display text-sm"
+              style={{ color: samePlace ? "var(--color-ink-3)" : "var(--color-leg)" }}
+            >
+              {legMeters} m
+            </p>
           </div>
           <div className="h-52 p-1">
             <StoreMap
@@ -274,6 +281,7 @@ export function ShopMode({
               checkout={map.checkout}
               labels={map.labels}
               path={path}
+              legPath={samePlace ? undefined : leg.map((p) => [p.x, p.y])}
               stops={mapStops}
               activeIndex={index}
               focus={focus}
@@ -361,74 +369,29 @@ export function ShopMode({
         )}
       </footer>
 
-      {/* Riposizionamento */}
+      {/* Riposizionamento: stesso gesto dell'area di amministrazione. */}
       {relocating && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-[var(--color-paper)]">
-          <div className="flex items-start justify-between gap-3 px-5 py-4">
-            <div>
-              <p className="tag text-[var(--color-ink-3)]">
-                {canEdit ? "Dove hai trovato" : "Segnala la posizione di"}
-              </p>
-              <p className="font-display text-xl leading-tight">{stop.name}</p>
-              <p className="mt-1 text-sm text-[var(--color-ink-3)]">
-                {canEdit
-                  ? "Tocca il punto giusto sulla mappa."
-                  : "Tocca dove l’hai trovato: un admin decide se applicarlo."}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setRelocating(false);
-                setCandidate(null);
-              }}
-              className="rounded-full border border-[var(--color-line)] px-4 py-1.5 text-sm"
-            >
-              Annulla
-            </button>
-          </div>
-
-          <StoreMap
-            grid={map.grid}
-            fixtures={map.fixtures}
-            entrance={map.entrance}
-            checkout={map.checkout}
-            labels={map.labels}
-            stops={candidate ? [{ x: candidate.accessX, y: candidate.accessY, index: 0 }] : []}
-            activeIndex={0}
-            interactive
-            onPickCell={pickCell}
-            className="min-h-0 flex-1"
-          />
-
-          <div className="px-5 pb-8" style={{ paddingBottom: "calc(2rem + var(--safe-b))" }}>
-            <div className="plate mb-3 p-4">
-              <p className="tag text-[var(--color-ink-3)]">Nuova posizione</p>
-              <p className="font-display mt-1 text-lg">
-                {candidate ? candidate.label : "Nessun punto selezionato"}
-              </p>
-            </div>
-
-            {!canEdit && (
-              <input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Dettagli, facoltativi"
-                className="mb-3 w-full rounded-full border border-[var(--color-line)] bg-[var(--color-paper-2)] px-4 py-3 text-sm outline-none placeholder:text-[var(--color-ink-3)]"
-              />
-            )}
-
-            <button
-              type="button"
-              onClick={confirmMove}
-              disabled={!candidate && canEdit}
-              className="font-display w-full rounded-full bg-[var(--color-brand)] py-4 text-lg text-[var(--color-paper)] disabled:opacity-40"
-            >
-              {canEdit ? "Conferma posizione" : "Invia segnalazione"}
-            </button>
-          </div>
-        </div>
+        <LocationPicker
+          map={map}
+          locations={locations}
+          title={canEdit ? "Dove hai trovato" : "Segnala la posizione di"}
+          subtitle={stop.name}
+          confirmLabel={canEdit ? "Conferma posizione" : "Invia segnalazione"}
+          allowEmpty={!canEdit}
+          onCancel={() => setRelocating(false)}
+          onConfirm={(location) => confirmMove(location as PickLocation | null)}
+        >
+          {!canEdit && (
+            <input
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Dettagli, facoltativi"
+              className="mb-3 w-full rounded-full border border-[var(--color-line)] bg-[var(--color-paper-2)] px-4 py-3 text-sm outline-none placeholder:text-[var(--color-ink-3)]"
+            />
+          )}
+        </LocationPicker>
       )}
+
     </div>
   );
 }

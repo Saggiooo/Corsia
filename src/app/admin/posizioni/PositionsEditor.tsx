@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { moveCategory, moveProducts } from "@/app/actions";
+import { LocationPicker, type PickableLocation, type PickerMap } from "@/components/map/LocationPicker";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
 
 export type AdminProduct = {
@@ -16,7 +17,7 @@ export type AdminProduct = {
   confirmed: boolean;
 };
 
-export type AdminLocation = { id: string; label: string; aisleName: string };
+export type AdminLocation = PickableLocation & { aisleName: string };
 
 type Props = {
   storeId: string;
@@ -24,21 +25,22 @@ type Props = {
   categorySlug: string;
   products: AdminProduct[];
   locations: AdminLocation[];
+  map: PickerMap;
 };
 
-export function PositionsEditor({ storeId, storeName, categorySlug, products, locations }: Props) {
+export function PositionsEditor({
+  storeId,
+  storeName,
+  categorySlug,
+  products,
+  locations,
+  map,
+}: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [target, setTarget] = useState("");
+  const [target, setTarget] = useState<AdminLocation | null>(null);
+  const [picking, setPicking] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  const byAisle = useMemo(() => {
-    const map = new Map<string, AdminLocation[]>();
-    for (const location of locations) {
-      map.set(location.aisleName, [...(map.get(location.aisleName) ?? []), location]);
-    }
-    return [...map.entries()];
-  }, [locations]);
 
   const toggle = (id: string) =>
     setSelected((current) => {
@@ -48,21 +50,24 @@ export function PositionsEditor({ storeId, storeName, categorySlug, products, lo
       return next;
     });
 
-  const targetLabel = locations.find((l) => l.id === target)?.label ?? "";
-
-  const applyToSelection = () =>
+  const applyToSelection = () => {
+    if (!target) return;
+    const count = selected.size;
     startTransition(async () => {
-      await moveProducts([...selected], storeId, target);
-      setDone(`${selected.size} prodotti spostati in ${targetLabel}.`);
+      await moveProducts([...selected], storeId, target.id);
+      setDone(`${count} prodotti spostati in ${target.label}.`);
       setSelected(new Set());
     });
+  };
 
-  const applyToCategory = () =>
+  const applyToCategory = () => {
+    if (!target) return;
     startTransition(async () => {
-      await moveCategory(categorySlug, storeId, target);
-      setDone(`Tutto il reparto spostato in ${targetLabel}.`);
+      await moveCategory(categorySlug, storeId, target.id);
+      setDone(`Tutto il reparto spostato in ${target.label}.`);
       setSelected(new Set());
     });
+  };
 
   return (
     <>
@@ -119,28 +124,19 @@ export function PositionsEditor({ storeId, storeName, categorySlug, products, lo
       >
         {done && <p className="mb-2 text-sm text-[var(--color-brand)]">{done}</p>}
 
-        <label className="block">
-          <span className="tag text-[var(--color-ink-3)]">Nuova posizione in {storeName}</span>
-          <select
-            value={target}
-            onChange={(e) => {
-              setTarget(e.target.value);
-              setDone(null);
-            }}
-            className="mt-1.5 w-full rounded-full border border-[var(--color-line)] bg-[var(--color-paper-2)] px-4 py-3 text-sm outline-none"
-          >
-            <option value="">Scegli corsia e scaffale…</option>
-            {byAisle.map(([aisle, list]) => (
-              <optgroup key={aisle} label={aisle}>
-                {list.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+        <button
+          type="button"
+          onClick={() => setPicking(true)}
+          className="plate flex w-full items-center gap-3 p-3 text-left"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="tag block text-[var(--color-ink-3)]">Nuova posizione in {storeName}</span>
+            <span className="font-display mt-0.5 block truncate">
+              {target ? target.label : "Scegli sulla mappa"}
+            </span>
+          </span>
+          <span className="text-[var(--color-ink-3)]">›</span>
+        </button>
 
         <div className="mt-2.5 flex gap-2">
           <button
@@ -161,6 +157,23 @@ export function PositionsEditor({ storeId, storeName, categorySlug, products, lo
           </button>
         </div>
       </div>
+
+      {picking && (
+        <LocationPicker
+          map={map}
+          locations={locations}
+          title="Dove vuoi spostarli"
+          subtitle={storeName}
+          confirmLabel="Usa questa posizione"
+          initialId={target?.id}
+          onCancel={() => setPicking(false)}
+          onConfirm={(location) => {
+            setTarget((locations.find((l) => l.id === location?.id) as AdminLocation) ?? null);
+            setDone(null);
+            setPicking(false);
+          }}
+        />
+      )}
     </>
   );
 }
