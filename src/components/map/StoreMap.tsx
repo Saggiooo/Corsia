@@ -16,6 +16,8 @@ export type MapLabel = { x: number; y: number; text: string; muted?: boolean };
 
 export type MapStop = { x: number; y: number; index: number; done?: boolean };
 
+export type Focus = { x: number; y: number; w: number; h: number };
+
 type Props = {
   grid: string[];
   fixtures: MapFixture[];
@@ -25,6 +27,10 @@ type Props = {
   path?: number[][];
   stops?: MapStop[];
   activeIndex?: number;
+  /** Inquadra solo questa porzione di mappa invece di tutto il negozio. */
+  focus?: Focus;
+  /** Cella di prelievo da evidenziare: lo scaffale accanto viene marcato. */
+  targetCell?: { x: number; y: number };
   interactive?: boolean;
   padding?: number;
   className?: string;
@@ -49,6 +55,8 @@ export function StoreMap({
   path,
   stops = [],
   activeIndex,
+  focus,
+  targetCell,
   interactive = false,
   padding = 1,
   className,
@@ -88,12 +96,65 @@ export function StoreMap({
       .join(" ");
   }, [grid, path, stops]);
 
-  const view = {
-    x: -padding,
-    y: -padding,
-    w: width + padding * 2,
-    h: height + padding * 2,
-  };
+  const view = focus
+    ? { x: focus.x, y: focus.y, w: focus.w, h: focus.h }
+    : { x: -padding, y: -padding, w: width + padding * 2, h: height + padding * 2 };
+
+  /**
+   * Piu' prodotti sullo stesso scaffale condividono la cella: disegnati uno
+   * sopra l'altro sarebbero illeggibili, quindi diventano un pin solo che
+   * riporta l'intervallo di tappe.
+   */
+  const groupedStops = useMemo(() => {
+    const groups = new Map<string, MapStop[]>();
+    for (const stop of stops) {
+      const key = `${stop.x},${stop.y}`;
+      groups.set(key, [...(groups.get(key) ?? []), stop]);
+    }
+
+    return [...groups.entries()].map(([key, group]) => {
+      const indexes = group.map((s) => s.index).sort((a, b) => a - b);
+      const first = indexes[0] + 1;
+      const last = indexes[indexes.length - 1] + 1;
+
+      return {
+        key,
+        x: group[0].x,
+        y: group[0].y,
+        label: indexes.length === 1 ? String(first) : `${first}–${last}`,
+        done: group.every((s) => s.done),
+        active: activeIndex !== undefined && indexes.includes(activeIndex),
+      };
+    });
+  }, [stops, activeIndex]);
+
+  /**
+   * Lo scaffale da cui prendere il prodotto: e' la cella occupata accanto al
+   * punto di prelievo. Si marca il lato giusto del corridoio, che e' l'unica
+   * cosa che serve sapere una volta arrivati in corsia.
+   */
+  const shelfEdges = useMemo(() => {
+    if (!targetCell) return [];
+    const parsed = parseGrid(grid);
+
+    return (
+      [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const
+    )
+      .filter(([dx, dy]) => !parsed.walkable(targetCell.x + dx, targetCell.y + dy))
+      .filter(
+        ([dx, dy]) =>
+          targetCell.x + dx >= 0 &&
+          targetCell.y + dy >= 0 &&
+          targetCell.x + dx < width &&
+          targetCell.y + dy < height,
+      )
+      .map(([dx, dy]) => ({ x: targetCell.x + dx, y: targetCell.y + dy }));
+  }, [targetCell, grid, width, height]);
 
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
@@ -277,11 +338,27 @@ export function StoreMap({
             />
           </g>
 
+          {/* Scaffale bersaglio */}
+          {shelfEdges.map((cell, i) => (
+            <rect
+              key={`shelf-${i}`}
+              x={cell.x + 0.06}
+              y={cell.y + 0.06}
+              width={0.88}
+              height={0.88}
+              rx={0.3}
+              fill="var(--color-signal)"
+              fillOpacity={0.5}
+              stroke="var(--color-signal)"
+              strokeWidth={0.2}
+            />
+          ))}
+
           {/* Tappe */}
-          {stops.map((stop) => {
-            const active = stop.index === activeIndex;
+          {groupedStops.map((stop) => {
+            const active = stop.active;
             return (
-              <g key={stop.index} transform={`translate(${stop.x + 0.5} ${stop.y + 0.5})`}>
+              <g key={stop.key} transform={`translate(${stop.x + 0.5} ${stop.y + 0.5})`}>
                 {active && (
                   <circle
                     r={1.3}
@@ -299,12 +376,12 @@ export function StoreMap({
                 <text
                   textAnchor="middle"
                   dominantBaseline="central"
-                  fontSize={active ? 1.25 : 1.05}
+                  fontSize={(active ? 1.25 : 1.05) * (stop.label.length > 2 ? 0.78 : 1)}
                   fontWeight={700}
                   fill="var(--color-paper)"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
-                  {stop.index + 1}
+                  {stop.label}
                 </text>
               </g>
             );

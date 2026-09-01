@@ -42,6 +42,7 @@ export default async function ShopPage({ params }: { params: Promise<{ id: strin
         canEdit={user.role === "admin"}
         stops={snapshot.stops}
         path={list.route.path as number[][]}
+        cellSizeCm={store.cellSizeCm}
         checked={checked}
         locations={pickLocations}
         map={map}

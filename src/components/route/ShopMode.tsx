@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { createReport, finishShopping, movePlacement, toggleChecked } from "@/app/actions";
-import { StoreMap, type MapFixture, type MapLabel } from "@/components/map/StoreMap";
+import { StoreMap, type Focus, type MapFixture, type MapLabel } from "@/components/map/StoreMap";
+import { splitLegs } from "@/lib/map/trace";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
 import type { StopSnapshot } from "@/lib/route-types";
 
@@ -22,6 +23,7 @@ type Props = {
   canEdit: boolean;
   stops: StopSnapshot[];
   path: number[][];
+  cellSizeCm: number;
   checked: Record<string, boolean>;
   locations: PickLocation[];
   map: {
@@ -58,6 +60,7 @@ export function ShopMode({
   canEdit,
   stops,
   path,
+  cellSizeCm,
   checked,
   locations,
   map,
@@ -83,6 +86,46 @@ export function ShopMode({
     () => stops.map((s, i) => ({ x: s.x, y: s.y, index: i, done: done[s.itemId] })),
     [stops, done],
   );
+
+  /**
+   * L'app non sa dove sei davvero: sa da dove vieni e dove devi arrivare.
+   * La vista ravvicinata inquadra quella tratta, non una posizione.
+   */
+  const leg = useMemo(() => {
+    const cells = path.map(([x, y]) => ({ x, y }));
+    const legs = splitLegs(
+      cells,
+      stops.map((s) => ({ x: s.x, y: s.y })),
+    );
+    return legs[index] ?? [];
+  }, [path, stops, index]);
+
+  const focus = useMemo<Focus | undefined>(() => {
+    if (leg.length === 0) return undefined;
+
+    const xs = leg.map((p) => p.x);
+    const ys = leg.map((p) => p.y);
+    const margin = 3;
+
+    let x0 = Math.min(...xs) - margin;
+    let y0 = Math.min(...ys) - margin;
+    let x1 = Math.max(...xs) + 1 + margin;
+    let y1 = Math.max(...ys) + 1 + margin;
+
+    // Sotto una certa ampiezza lo zoom diventa disorientante: si allarga.
+    const MIN = 16;
+    const grow = (a: number, b: number) => {
+      const missing = MIN - (b - a);
+      return missing > 0 ? [a - missing / 2, b + missing / 2] : [a, b];
+    };
+
+    [x0, x1] = grow(x0, x1);
+    [y0, y1] = grow(y0, y1);
+
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }, [leg]);
+
+  const legMeters = Math.round((Math.max(leg.length - 1, 0) * cellSizeCm) / 100);
 
   const advance = () => setIndex((i) => Math.min(i + 1, stops.length - 1));
 
@@ -178,7 +221,7 @@ export function ShopMode({
       </header>
 
       {/* Tappa corrente */}
-      <section key={stop.itemId} className="flex-1 px-6 pt-7" style={{ animation: "rise .35s both" }}>
+      <section key={stop.itemId} className="flex-1 px-6 pt-7 pb-44" style={{ animation: "rise .35s both" }}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="tag text-[var(--color-ink-3)]">
@@ -218,17 +261,42 @@ export function ShopMode({
           )}
         </div>
 
-        <div className="plate mt-7 h-48 overflow-hidden p-1">
-          <StoreMap
-            grid={map.grid}
-            fixtures={map.fixtures}
-            entrance={map.entrance}
-            checkout={map.checkout}
-            path={path}
-            stops={mapStops}
-            activeIndex={index}
-            className="h-full w-full"
-          />
+        <div className="plate mt-7 overflow-hidden">
+          <div className="flex items-baseline justify-between px-4 pt-3">
+            <p className="tag text-[var(--color-ink-3)]">Da qui allo scaffale</p>
+            <p className="font-display text-sm text-[var(--color-signal)]">{legMeters} m</p>
+          </div>
+          <div className="h-52 p-1">
+            <StoreMap
+              grid={map.grid}
+              fixtures={map.fixtures}
+              entrance={map.entrance}
+              checkout={map.checkout}
+              labels={map.labels}
+              path={path}
+              stops={mapStops}
+              activeIndex={index}
+              focus={focus}
+              targetCell={{ x: stop.x, y: stop.y }}
+              className="h-full w-full"
+            />
+          </div>
+        </div>
+
+        <div className="plate mt-3 overflow-hidden">
+          <p className="tag px-4 pt-3 text-[var(--color-ink-3)]">Tutto il percorso</p>
+          <div className="h-40 p-1">
+            <StoreMap
+              grid={map.grid}
+              fixtures={map.fixtures}
+              entrance={map.entrance}
+              checkout={map.checkout}
+              path={path}
+              stops={mapStops}
+              activeIndex={index}
+              className="h-full w-full"
+            />
+          </div>
         </div>
       </section>
 

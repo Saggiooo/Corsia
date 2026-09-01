@@ -265,6 +265,18 @@ scripts/scrape-coop.ts      importer del catalogo
 ed e' coperto da test. Le Server Action sono l'unico punto che parla col
 database.
 
+## Durante la spesa
+
+Corsia non sa dove sei davvero: non c'e' posizionamento indoor. Sa pero' da
+dove vieni e dove devi arrivare, quindi la vista ravvicinata inquadra **la
+tratta corrente**, non una posizione: il tratto fra la tappa precedente e
+quella attuale, con i metri da fare e lo scaffale bersaglio marcato sul lato
+giusto del corridoio. Sotto resta la mappa d'insieme. Entrambe si aggiornano a
+ogni "Preso".
+
+Le tappe che condividono lo stesso scaffale diventano un pin solo con
+l'intervallo ("5–6"): disegnate una sopra l'altra sarebbero illeggibili.
+
 ## Modificare la mappa
 
 `/mappa` mostra la planimetria, `/mappa/modifica` la fa modificare: scegli uno
