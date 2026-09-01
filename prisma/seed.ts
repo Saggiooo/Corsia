@@ -10,6 +10,16 @@ const prisma = new PrismaClient({
 
 const STORE_SLUG = "extracoop-villanova";
 
+/** Hash stabile: lo stesso prodotto finisce sempre sulla stessa campata. */
+function hash(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
 async function main() {
   const layout = buildLayout();
 
@@ -122,11 +132,22 @@ async function main() {
   }
 
   // --- Prodotti e posizioni ipotizzate ------------------------------------
+  // I prodotti di una categoria si spalmano sulle campate della sua corsia:
+  // e' cosi' che stanno davvero a scaffale, e rende il percorso realistico.
+  const baysOf = new Map<string, number[]>();
+  for (const location of layout.locations) {
+    const key = `${location.aisleNumber}/${location.side}`;
+    baysOf.set(key, [...(baysOf.get(key) ?? []), location.bay].sort((a, b) => a - b));
+  }
+
   let created = 0;
+  let moved = 0;
   for (const product of PRODUCTS) {
     const slug = slugify(`${product.name} ${product.size ?? ""}`);
     const category = CATEGORIES.find((c) => c.slug === product.categorySlug)!;
-    const home = locationId.get(`${category.home[0]}/${category.home[1]}/${category.home[2]}`)!;
+    const bays = baysOf.get(`${category.home[0]}/${category.home[1]}`) ?? [category.home[2]];
+    const bay = bays[hash(slug) % bays.length];
+    const home = locationId.get(`${category.home[0]}/${category.home[1]}/${bay}`)!;
 
     const row = await prisma.product.upsert({
       where: { slug },
@@ -151,11 +172,15 @@ async function main() {
     const existing = await prisma.placement.findUnique({
       where: { productId_storeId: { productId: row.id, storeId: store.id } },
     });
+
     if (!existing) {
       await prisma.placement.create({
         data: { productId: row.id, storeId: store.id, locationId: home, confidence: "guessed" },
       });
       created++;
+    } else if (existing.confidence === "guessed" && existing.locationId !== home) {
+      await prisma.placement.update({ where: { id: existing.id }, data: { locationId: home } });
+      moved++;
     }
   }
 
@@ -163,7 +188,8 @@ async function main() {
 
   console.log(
     `Seed ok: ${layout.aisles.length} corsie, ${layout.locations.length} punti di prelievo, ` +
-      `${CATEGORIES.length} categorie, ${PRODUCTS.length} prodotti (${created} nuove posizioni).`,
+      `${CATEGORIES.length} categorie, ${PRODUCTS.length} prodotti ` +
+      `(${created} nuove posizioni, ${moved} ipotesi aggiornate).`,
   );
 }
 

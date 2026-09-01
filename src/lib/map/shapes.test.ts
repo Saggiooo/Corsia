@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mergeCells } from "./shapes";
+import { groupCells, mergeCells } from "./shapes";
 
 describe("mergeCells", () => {
   test("un blocco pieno diventa un solo rettangolo", () => {
@@ -54,5 +54,42 @@ describe("mergeCells", () => {
 
   test("nessuna cella, nessun rettangolo", () => {
     expect(mergeCells([])).toEqual([]);
+  });
+});
+
+describe("groupCells", () => {
+  test("celle contigue formano un solo gruppo", () => {
+    const groups = groupCells([
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(3);
+  });
+
+  test("celle separate formano gruppi distinti", () => {
+    const groups = groupCells([
+      [0, 0],
+      [5, 5],
+      [5, 6],
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.length).sort()).toEqual([1, 2]);
+  });
+
+  test("il contatto in diagonale non unisce i gruppi", () => {
+    const groups = groupCells([
+      [0, 0],
+      [1, 1],
+    ]);
+
+    expect(groups).toHaveLength(2);
+  });
+
+  test("nessuna cella, nessun gruppo", () => {
+    expect(groupCells([])).toEqual([]);
   });
 });

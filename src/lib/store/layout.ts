@@ -224,7 +224,7 @@ export function buildLayout(): Layout {
 
   const entrance: Cell = [2, 2];
   const checkout: Cell = [39, 33];
-  fixtures.push({ key: "ingresso", kind: "entrance", label: "Ingresso", cells: [entrance] });
+  fixtures.push({ key: "ingresso", kind: "entrance", cells: [entrance] });
 
   return {
     width: W,

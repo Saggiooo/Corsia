@@ -1,69 +1,126 @@
-import Image from "next/image";
+import Link from "next/link";
+import { createList } from "@/app/actions";
+import { StoreMap } from "@/components/map/StoreMap";
+import { Wordmark } from "@/components/ui/Wordmark";
+import { getLists, getMapData, getStore } from "@/lib/queries";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+function progressOf(items: { checked: boolean }[]) {
+  if (items.length === 0) return 0;
+  return Math.round((items.filter((i) => i.checked).length / items.length) * 100);
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: "In preparazione",
+  routed: "Percorso pronto",
+  shopping: "In corso",
+  done: "Completata",
+};
+
+export default async function HomePage() {
+  const [store, map, lists] = await Promise.all([getStore(), getMapData(), getLists()]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="mx-auto w-full max-w-lg px-5 pt-10 pb-32">
+      <header className="flex items-end justify-between">
+        <div>
+          <p className="tag text-[var(--color-ink-3)]">La spesa in ordine di corsia</p>
+          <Wordmark className="mt-1" />
+        </div>
+        <Link
+          href="/mappa"
+          className="mb-2 rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] active:bg-[var(--color-paper-2)]"
+        >
+          Mappa
+        </Link>
+      </header>
+
+      <section className="plate grain relative mt-8 overflow-hidden">
+        <div className="flex items-start justify-between gap-4 p-5 pb-3">
+          <div>
+            <p className="tag text-[var(--color-brand)]">Supermercato</p>
+            <h2 className="font-display mt-1 text-2xl leading-tight">{store.name}</h2>
+            <p className="mt-1 text-sm text-[var(--color-ink-3)]">{store.address}</p>
+          </div>
+          <span className="mt-1 flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--color-brand)] shadow-[0_0_0_4px_var(--color-brand-soft)]" />
+        </div>
+
+        <div className="h-44 px-2 pb-2 opacity-90">
+          <StoreMap
+            grid={map.grid}
+            fixtures={map.fixtures}
+            entrance={map.entrance}
+            checkout={map.checkout}
+            className="h-full w-full"
+          />
+        </div>
+      </section>
+
+      <section className="mt-9">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-lg">Le tue liste</h2>
+          <span className="text-xs text-[var(--color-ink-3)]">{lists.length}</span>
+        </div>
+
+        {lists.length === 0 ? (
+          <p className="plate mt-3 p-5 text-sm text-[var(--color-ink-3)]">
+            Nessuna lista. Creane una e Corsia calcola l&apos;ordine in cui prendere le cose.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        ) : (
+          <ul className="mt-3 space-y-2.5">
+            {lists.map((list, i) => {
+              const progress = progressOf(list.items);
+              return (
+                <li key={list.id} style={{ animation: `rise .4s ${i * 40}ms both` }}>
+                  <Link
+                    href={list.status === "shopping" ? `/liste/${list.id}/spesa` : `/liste/${list.id}`}
+                    className="plate flex items-center gap-4 p-4 transition-transform active:scale-[0.99]"
+                  >
+                    <span className="relative flex h-11 w-11 shrink-0 items-center justify-center">
+                      <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90">
+                        <circle cx="20" cy="20" r="17" fill="none" stroke="var(--color-paper-3)" strokeWidth="4" />
+                        <circle
+                          cx="20"
+                          cy="20"
+                          r="17"
+                          fill="none"
+                          stroke={progress === 100 ? "var(--color-brand)" : "var(--color-signal)"}
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          pathLength={100}
+                          strokeDasharray={`${progress} 100`}
+                        />
+                      </svg>
+                      <span className="font-display text-sm">{list._count.items}</span>
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{list.name}</span>
+                      <span className="tag text-[var(--color-ink-3)]">{STATUS_LABEL[list.status]}</span>
+                    </span>
+
+                    <span className="text-[var(--color-ink-3)]">›</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <form
+        action={createList}
+        className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-lg px-5"
+        style={{ paddingBottom: "calc(1.25rem + var(--safe-b))" }}
+      >
+        <button
+          type="submit"
+          className="font-display w-full rounded-full bg-[var(--color-ink)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98]"
+        >
+          Nuova lista
+        </button>
+      </form>
+    </main>
   );
 }

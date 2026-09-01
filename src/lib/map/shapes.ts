@@ -45,3 +45,41 @@ function rowIsFree(present: Set<string>, used: Set<string>, x: number, y: number
 function key(x: number, y: number): string {
   return `${x},${y}`;
 }
+
+/**
+ * Raggruppa le celle in componenti connesse a 4 direzioni: e' cosi' che le
+ * pennellate dell'editor tornano a essere blocchi distinti sulla mappa.
+ */
+export function groupCells(cells: readonly number[][]): number[][][] {
+  const remaining = new Set(cells.map(([x, y]) => key(x, y)));
+  const groups: number[][][] = [];
+
+  for (const [x, y] of cells) {
+    if (!remaining.has(key(x, y))) continue;
+
+    const group: number[][] = [];
+    const stack = [[x, y]];
+    remaining.delete(key(x, y));
+
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop()!;
+      group.push([cx, cy]);
+
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const k = key(cx + dx, cy + dy);
+        if (!remaining.has(k)) continue;
+        remaining.delete(k);
+        stack.push([cx + dx, cy + dy]);
+      }
+    }
+
+    groups.push(group);
+  }
+
+  return groups;
+}

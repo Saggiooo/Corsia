@@ -1,26 +1,175 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ *
+ * Corsia — sistema visivo "segnaletica".
+ * Carta calda, inchiostro caldo, colori per reparto, arancione segnale
+ * riservato al percorso e a nient'altro.
+ * ------------------------------------------------------------------ */
+
+@theme {
+  --color-paper: #fbf8f3;
+  --color-paper-2: #f4efe5;
+  --color-paper-3: #ebe4d6;
+  --color-ink: #17150f;
+  --color-ink-2: #5f5949;
+  --color-ink-3: #8d8674;
+  --color-line: #e3dbcb;
+
+  --color-brand: #1f7a4c;
+  --color-brand-soft: #dbeee2;
+  --color-signal: #e2590a;
+  --color-signal-soft: #fce4d2;
+
+  --font-display: var(--font-bricolage), "Trebuchet MS", sans-serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-plate: 14px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Colori di reparto: pieno per l'accento, soft per i fondi. */
+  --produce: #4c9a2a;
+  --produce-soft: #e7f3dc;
+  --bakery: #c9821f;
+  --bakery-soft: #faeeda;
+  --meat: #c2415b;
+  --meat-soft: #fbe2e7;
+  --fish: #0f8074;
+  --fish-soft: #d9efec;
+  --dairy: #4a6fb5;
+  --dairy-soft: #e2e9f7;
+  --deli: #a8442c;
+  --deli-soft: #f7e4de;
+  --frozen: #2aa5c7;
+  --frozen-soft: #dcf0f6;
+  --pantry: #9a7b3f;
+  --pantry-soft: #f4ecdb;
+  --breakfast: #8c5a33;
+  --breakfast-soft: #f3e7dc;
+  --sweet: #e0603e;
+  --sweet-soft: #fce3da;
+  --drinks: #3f4ea8;
+  --drinks-soft: #e2e4f6;
+  --home: #5b6b73;
+  --home-soft: #e5ebed;
+  --care: #c05e93;
+  --care-soft: #f9e2ee;
+  --pet: #6e5a47;
+  --pet-soft: #eee7df;
+  --checkout: #4a463c;
+  --checkout-soft: #e9e6dd;
+
+  --shadow-plate: 0 1px 2px rgba(23, 21, 15, 0.06), 0 8px 24px -16px rgba(23, 21, 15, 0.35);
+  --shadow-float: 0 24px 56px -28px rgba(23, 21, 15, 0.45);
+  --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv01";
+  overscroll-behavior-y: none;
+  /* Grana di carta: due gradienti radiali appena percettibili. */
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(31, 122, 76, 0.05), transparent 42%),
+    radial-gradient(circle at 88% 0%, rgba(226, 89, 10, 0.05), transparent 38%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: var(--color-signal);
+  color: var(--color-paper);
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  .plate {
+    background: color-mix(in srgb, var(--color-paper) 88%, white);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-plate);
+  }
+
+  /* Etichetta di corsia: piccola, maiuscola, spaziata. Linguaggio da segnaletica. */
+  .tag {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+    mix-blend-mode: multiply;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

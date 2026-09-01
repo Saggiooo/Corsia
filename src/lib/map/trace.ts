@@ -31,7 +31,7 @@ export function pullString(grid: Grid, path: Point[]): Point[] {
 function hasLineOfSight(grid: Grid, from: Point, to: Point): boolean {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy)) * 4;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy)) * 8;
 
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
@@ -84,4 +84,33 @@ function distance(a: Point, b: Point): number {
 
 function f(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * Spezza il tracciato in tratte che terminano su ogni tappa, nell'ordine in cui
+ * vengono visitate. Serve perche' lo string-pulling va applicato tratta per
+ * tratta: sull'intero percorso taglierebbe via le discese in corsia.
+ */
+export function splitLegs(path: Point[], stops: Point[]): Point[][] {
+  if (path.length === 0) return [];
+
+  const legs: Point[][] = [];
+  let start = 0;
+
+  for (const stop of stops) {
+    let index = -1;
+    for (let i = start + 1; i < path.length; i++) {
+      if (path[i].x === stop.x && path[i].y === stop.y) {
+        index = i;
+        break;
+      }
+    }
+    if (index === -1) continue;
+
+    legs.push(path.slice(start, index + 1));
+    start = index;
+  }
+
+  legs.push(path.slice(start));
+  return legs;
 }

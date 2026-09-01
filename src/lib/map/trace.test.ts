@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { parseGrid } from "@/lib/routing/grid";
-import { pullString, roundedPathD } from "./trace";
+import { pullString, roundedPathD, splitLegs } from "./trace";
 
 describe("pullString", () => {
   test("una scaletta in campo aperto diventa un segmento dritto", () => {
@@ -68,5 +68,66 @@ describe("roundedPathD", () => {
 
   test("un percorso vuoto non produce comandi", () => {
     expect(roundedPathD([], 3)).toBe("");
+  });
+});
+
+describe("splitLegs", () => {
+  test("spezza il tracciato in tratte che finiscono su ogni tappa", () => {
+    const path = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+      { x: 3, y: 0 },
+      { x: 4, y: 0 },
+    ];
+
+    const legs = splitLegs(path, [
+      { x: 2, y: 0 },
+      { x: 3, y: 0 },
+    ]);
+
+    expect(legs).toHaveLength(3);
+    expect(legs[0].at(-1)).toEqual({ x: 2, y: 0 });
+    expect(legs[1].at(-1)).toEqual({ x: 3, y: 0 });
+    expect(legs[2].at(-1)).toEqual({ x: 4, y: 0 });
+  });
+
+  test("le tratte si agganciano: ogni tratta riparte dalla tappa precedente", () => {
+    const path = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+      { x: 3, y: 0 },
+    ];
+
+    const legs = splitLegs(path, [{ x: 2, y: 0 }]);
+
+    expect(legs[1][0]).toEqual({ x: 2, y: 0 });
+  });
+
+  test("una tappa visitata due volte usa il primo passaggio utile", () => {
+    const path = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ];
+
+    const legs = splitLegs(path, [
+      { x: 1, y: 0 },
+      { x: 0, y: 0 },
+    ]);
+
+    expect(legs[0]).toHaveLength(2);
+    expect(legs[1].at(-1)).toEqual({ x: 0, y: 0 });
+  });
+
+  test("senza tappe restituisce il tracciato intero come unica tratta", () => {
+    const path = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ];
+
+    expect(splitLegs(path, [])).toEqual([path]);
   });
 });

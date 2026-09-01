@@ -1,0 +1,308 @@
+"use client";
+
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { addFreeText, addProduct, removeItem, routeAndOpen, setQty } from "@/app/actions";
+import { Icon } from "@/components/icons/Icon";
+import { AisleBadge } from "@/components/ui/AisleBadge";
+import { ProductAvatar } from "@/components/ui/ProductAvatar";
+import type { SearchHit } from "@/lib/queries";
+
+export type EditorItem = {
+  id: string;
+  name: string;
+  size: string | null;
+  qty: number;
+  iconKey: string | null;
+  categoryName: string;
+  categoryIcon: string;
+  colorToken: string;
+  aisleName: string | null;
+  locationLabel: string | null;
+  confirmed: boolean;
+};
+
+export type EditorCategory = { slug: string; name: string; iconKey: string; colorToken: string };
+
+type Props = {
+  listId: string;
+  items: EditorItem[];
+  categories: EditorCategory[];
+};
+
+export function ListEditor({ listId, items, categories }: Props) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string | null>(null);
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const browsing = query.trim().length >= 2 || category !== null;
+
+  useEffect(() => {
+    if (!browsing) {
+      setHits([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const params = category
+          ? `category=${encodeURIComponent(category)}`
+          : `q=${encodeURIComponent(query)}`;
+        const response = await fetch(`/api/search?${params}`, { signal: controller.signal });
+        const data = (await response.json()) as { hits: SearchHit[] };
+        setHits(data.hits);
+      } catch {
+        // richiesta annullata: la sostituisce quella successiva
+      } finally {
+        setSearching(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [query, category, browsing]);
+
+  const inList = useMemo(() => new Map(items.map((i) => [i.name, i])), [items]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, EditorItem[]>();
+    for (const item of items) map.set(item.categoryName, [...(map.get(item.categoryName) ?? []), item]);
+    return [...map.entries()];
+  }, [items]);
+
+  const total = items.reduce((sum, i) => sum + i.qty, 0);
+
+  const reset = () => {
+    setQuery("");
+    setCategory(null);
+    setHits([]);
+  };
+
+  return (
+    <>
+      <div className="sticky top-0 z-30 -mx-5 bg-[var(--color-paper)]/92 px-5 pt-2 pb-3 backdrop-blur-md">
+        <div className="flex items-center gap-2 rounded-full border border-[var(--color-line)] bg-white/70 px-4 py-3 shadow-[var(--shadow-plate)]">
+          <Icon name="basket" size={20} className="shrink-0 text-[var(--color-ink-3)]" />
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setCategory(null);
+            }}
+            placeholder="Cerca un prodotto…"
+            className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-ink-3)]"
+            enterKeyHint="done"
+          />
+          {browsing && (
+            <button
+              type="button"
+              onClick={reset}
+              aria-label="Chiudi ricerca"
+              className="text-[var(--color-ink-3)]"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="no-scrollbar -mx-5 mt-2.5 flex gap-2 overflow-x-auto px-5">
+          {categories.map((c) => (
+            <button
+              key={c.slug}
+              type="button"
+              onClick={() => {
+                setCategory(category === c.slug ? null : c.slug);
+                setQuery("");
+              }}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+              style={
+                category === c.slug
+                  ? {
+                      background: `var(--${c.colorToken})`,
+                      borderColor: "transparent",
+                      color: "var(--color-paper)",
+                    }
+                  : {
+                      background: `var(--${c.colorToken}-soft)`,
+                      borderColor: "transparent",
+                      color: `var(--${c.colorToken})`,
+                    }
+              }
+            >
+              <Icon name={c.iconKey} size={15} />
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {browsing ? (
+        <section className="mt-2 pb-24">
+          {searching && hits.length === 0 && (
+            <p className="py-8 text-center text-sm text-[var(--color-ink-3)]">Cerco…</p>
+          )}
+
+          {!searching && hits.length === 0 && query.trim().length >= 2 && (
+            <button
+              type="button"
+              onClick={() =>
+                startTransition(async () => {
+                  await addFreeText(listId, query);
+                  reset();
+                })
+              }
+              className="plate mt-3 flex w-full items-center gap-3 p-4 text-left"
+            >
+              <ProductAvatar iconKey="basket" colorToken="pantry" />
+              <span>
+                <span className="block font-medium">Aggiungi &ldquo;{query.trim()}&rdquo;</span>
+                <span className="tag text-[var(--color-ink-3)]">Senza corsia, in fondo al percorso</span>
+              </span>
+            </button>
+          )}
+
+          <ul className="mt-2 space-y-2">
+            {hits.map((hit, i) => {
+              const already = inList.get(hit.name);
+              return (
+                <li key={hit.id} style={{ animation: `rise .28s ${Math.min(i, 12) * 25}ms both` }}>
+                  <button
+                    type="button"
+                    onClick={() => startTransition(() => addProduct(listId, hit.id))}
+                    className="plate flex w-full items-center gap-3 p-3 text-left transition-transform active:scale-[0.99]"
+                  >
+                    <ProductAvatar
+                      iconKey={hit.iconKey}
+                      fallback={hit.categoryIcon}
+                      colorToken={hit.colorToken}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{hit.name}</span>
+                      <span className="mt-1 flex items-center gap-2">
+                        {hit.aisleName && <AisleBadge aisle={hit.aisleName} detail={hit.size} tone="soft" />}
+                        {!hit.confirmed && (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full bg-[var(--color-signal)]"
+                            title="Posizione da confermare"
+                          />
+                        )}
+                      </span>
+                    </span>
+                    <span
+                      className="font-display flex h-9 w-9 items-center justify-center rounded-full text-lg"
+                      style={{
+                        background: already ? "var(--color-brand)" : "var(--color-paper-2)",
+                        color: already ? "var(--color-paper)" : "var(--color-ink)",
+                      }}
+                    >
+                      {already ? already.qty : "+"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : (
+        <section className="mt-4 pb-28">
+          {items.length === 0 ? (
+            <div className="plate mt-2 p-6 text-center">
+              <p className="font-display text-lg">Lista vuota</p>
+              <p className="mt-1 text-sm text-[var(--color-ink-3)]">
+                Cerca un prodotto o apri un reparto qui sopra.
+              </p>
+            </div>
+          ) : (
+            grouped.map(([categoryName, group]) => (
+              <div key={categoryName} className="mb-6">
+                <div className="mb-2 flex items-center gap-2">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: `var(--${group[0].colorToken})` }}
+                  />
+                  <h3 className="tag text-[var(--color-ink-2)]">{categoryName}</h3>
+                  <span className="h-px flex-1 bg-[var(--color-line)]" />
+                </div>
+
+                <ul className="space-y-2">
+                  {group.map((item) => (
+                    <li key={item.id} className="plate flex items-center gap-3 p-3">
+                      <ProductAvatar
+                        iconKey={item.iconKey}
+                        fallback={item.categoryIcon}
+                        colorToken={item.colorToken}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{item.name}</p>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <AisleBadge aisle={item.aisleName ?? "Senza corsia"} tone="soft" />
+                          {item.locationLabel && (
+                            <span className="truncate text-[11px] text-[var(--color-ink-3)]">
+                              {item.locationLabel}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 rounded-full bg-[var(--color-paper-2)] p-1">
+                        <button
+                          type="button"
+                          aria-label="Togli uno"
+                          onClick={() => startTransition(() => setQty(item.id, item.qty - 1))}
+                          className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                        >
+                          −
+                        </button>
+                        <span className="font-display w-5 text-center text-sm">{item.qty}</span>
+                        <button
+                          type="button"
+                          aria-label="Aggiungi uno"
+                          onClick={() => startTransition(() => setQty(item.id, item.qty + 1))}
+                          className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        aria-label={`Rimuovi ${item.name}`}
+                        onClick={() => startTransition(() => removeItem(item.id))}
+                        className="ml-1 text-[var(--color-ink-3)]"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </section>
+      )}
+
+      {items.length > 0 && !browsing && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-lg px-5"
+          style={{ paddingBottom: "calc(1.25rem + var(--safe-b))" }}
+        >
+          <form action={routeAndOpen.bind(null, listId)}>
+            <button
+              type="submit"
+              disabled={pending}
+              className="font-display flex w-full items-center justify-between rounded-full bg-[var(--color-ink)] px-6 py-4 text-left text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98] disabled:opacity-60"
+            >
+              <span className="text-lg">Calcola il percorso</span>
+              <span className="rounded-full bg-white/15 px-3 py-1 text-sm">{total}</span>
+            </button>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
