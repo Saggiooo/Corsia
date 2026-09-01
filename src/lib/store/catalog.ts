@@ -45,6 +45,8 @@ export type ProductSeed = {
   iconKey?: string;
   size?: string;
   brand?: string;
+  ean?: string;
+  sourceUrl?: string;
 };
 
 /** [nome, iconKey?, formato?, marca?] */

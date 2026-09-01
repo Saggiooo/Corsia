@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListEditor, type EditorItem } from "@/components/list/ListEditor";
-import { getCategories, getList } from "@/lib/queries";
+import { ListHeader } from "@/components/list/ListHeader";
+import { getCategories, getList, getMostBought } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ function shortLocation(label?: string | null, aisleName?: string | null): string
 
 export default async function ListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [list, categories] = await Promise.all([getList(id), getCategories()]);
+  const [list, categories, frequent] = await Promise.all([getList(id), getCategories(), getMostBought()]);
   if (!list) notFound();
 
   const items: EditorItem[] = list.items.map((item) => {
@@ -36,20 +36,7 @@ export default async function ListPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="mx-auto w-full max-w-lg px-5 pt-6">
-      <header className="mb-3 flex items-center justify-between">
-        <Link
-          href="/"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink-2)]"
-          aria-label="Torna alla home"
-        >
-          ‹
-        </Link>
-        <div className="text-center">
-          <p className="tag text-[var(--color-ink-3)]">Lista</p>
-          <h1 className="font-display -mt-0.5 text-xl leading-tight">{list.name}</h1>
-        </div>
-        <span className="w-9" />
-      </header>
+      <ListHeader listId={list.id} name={list.name} />
 
       <ListEditor
         listId={list.id}
@@ -59,6 +46,13 @@ export default async function ListPage({ params }: { params: Promise<{ id: strin
           name: c.name,
           iconKey: c.iconKey,
           colorToken: c.colorToken,
+        }))}
+        frequent={frequent.map((p) => ({
+          id: p.id,
+          name: p.name,
+          iconKey: p.iconKey,
+          categoryIcon: p.category.iconKey,
+          colorToken: p.category.colorToken,
         }))}
       />
     </main>

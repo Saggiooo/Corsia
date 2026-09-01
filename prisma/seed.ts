@@ -1,14 +1,64 @@
 import "dotenv/config";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { buildLayout } from "../src/lib/store/layout";
-import { CATEGORIES, PRODUCTS, searchTextOf, slugify } from "../src/lib/store/catalog";
+import { CATEGORIES, PRODUCTS, searchTextOf, slugify, type ProductSeed } from "../src/lib/store/catalog";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
 });
 
 const STORE_SLUG = "extracoop-villanova";
+const SNAPSHOT = resolve(process.cwd(), "data/catalog.snapshot.json");
+
+type SnapshotRow = {
+  name: string;
+  brand: string | null;
+  size: string | null;
+  ean: string | null;
+  categorySlug: string;
+  iconKey: string | null;
+  sourceId: string;
+  sourceUrl: string | null;
+};
+
+/**
+ * Catalogo da caricare: lo snapshot scaricato da coopshop.it se c'e', altrimenti
+ * la lista curata a mano. L'app non dipende mai dalla rete.
+ */
+function loadCatalog(): { products: ProductSeed[]; source: string } {
+  if (!existsSync(SNAPSHOT)) {
+    return { products: PRODUCTS, source: "lista curata" };
+  }
+
+  const known = new Set(CATEGORIES.map((c) => c.slug));
+  const snapshot = JSON.parse(readFileSync(SNAPSHOT, "utf8")) as { products: SnapshotRow[] };
+
+  const products = snapshot.products
+    .filter((row) => known.has(row.categorySlug))
+    .map<ProductSeed>((row) => ({
+      name: row.name,
+      categorySlug: row.categorySlug,
+      iconKey: row.iconKey ?? undefined,
+      size: row.size ?? undefined,
+      brand: row.brand ?? undefined,
+      ean: row.ean ?? undefined,
+      sourceUrl: row.sourceUrl ?? undefined,
+    }));
+
+  return { products, source: `snapshot (${products.length} righe)` };
+}
+
+/** Nomi e formati si ripetono nel catalogo: lo slug va reso univoco. */
+function uniqueSlug(base: string, seen: Set<string>): string {
+  let slug = base || "prodotto";
+  let n = 2;
+  while (seen.has(slug)) slug = `${base}-${n++}`;
+  seen.add(slug);
+  return slug;
+}
 
 /** Hash stabile: lo stesso prodotto finisce sempre sulla stessa campata. */
 function hash(value: string): number {
@@ -140,10 +190,14 @@ async function main() {
     baysOf.set(key, [...(baysOf.get(key) ?? []), location.bay].sort((a, b) => a - b));
   }
 
+  const catalog = loadCatalog();
+
   let created = 0;
   let moved = 0;
-  for (const product of PRODUCTS) {
-    const slug = slugify(`${product.name} ${product.size ?? ""}`);
+  const seenSlugs = new Set<string>();
+
+  for (const product of catalog.products) {
+    const slug = uniqueSlug(slugify(`${product.name} ${product.size ?? ""}`), seenSlugs);
     const category = CATEGORIES.find((c) => c.slug === product.categorySlug)!;
     const bays = baysOf.get(`${category.home[0]}/${category.home[1]}`) ?? [category.home[2]];
     const bay = bays[hash(slug) % bays.length];
@@ -156,12 +210,17 @@ async function main() {
         name: product.name,
         brand: product.brand,
         size: product.size,
+        ean: product.ean,
+        sourceUrl: product.sourceUrl,
         categoryId: categoryId.get(product.categorySlug)!,
         iconKey: product.iconKey,
         searchText: searchTextOf(product),
       },
       update: {
         name: product.name,
+        brand: product.brand,
+        size: product.size,
+        sourceUrl: product.sourceUrl,
         categoryId: categoryId.get(product.categorySlug)!,
         iconKey: product.iconKey,
         searchText: searchTextOf(product),
@@ -188,7 +247,7 @@ async function main() {
 
   console.log(
     `Seed ok: ${layout.aisles.length} corsie, ${layout.locations.length} punti di prelievo, ` +
-      `${CATEGORIES.length} categorie, ${PRODUCTS.length} prodotti ` +
+      `${CATEGORIES.length} categorie, ${catalog.products.length} prodotti da ${catalog.source} ` +
       `(${created} nuove posizioni, ${moved} ipotesi aggiornate).`,
   );
 }

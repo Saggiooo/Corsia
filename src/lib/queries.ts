@@ -120,14 +120,6 @@ export async function getCategories() {
   return prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
 }
 
-export async function getProductsByCategory(slug: string) {
-  return prisma.product.findMany({
-    where: { category: { slug } },
-    orderBy: { name: "asc" },
-    include: { category: true },
-  });
-}
-
 export async function getLists() {
   return prisma.list.findMany({
     orderBy: { createdAt: "desc" },
@@ -154,10 +146,6 @@ export async function getList(id: string) {
       },
     },
   });
-}
-
-export async function getSettings() {
-  return prisma.settings.upsert({ where: { id: "singleton" }, create: {}, update: {} });
 }
 
 export async function getMostBought(limit = 12) {

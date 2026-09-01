@@ -23,13 +23,22 @@ export type EditorItem = {
 
 export type EditorCategory = { slug: string; name: string; iconKey: string; colorToken: string };
 
+export type FrequentProduct = {
+  id: string;
+  name: string;
+  iconKey: string | null;
+  categoryIcon: string;
+  colorToken: string;
+};
+
 type Props = {
   listId: string;
   items: EditorItem[];
   categories: EditorCategory[];
+  frequent: FrequentProduct[];
 };
 
-export function ListEditor({ listId, items, categories }: Props) {
+export function ListEditor({ listId, items, categories, frequent }: Props) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -211,11 +220,41 @@ export function ListEditor({ listId, items, categories }: Props) {
       ) : (
         <section className="mt-4 pb-28">
           {items.length === 0 ? (
-            <div className="plate mt-2 p-6 text-center">
-              <p className="font-display text-lg">Lista vuota</p>
-              <p className="mt-1 text-sm text-[var(--color-ink-3)]">
-                Cerca un prodotto o apri un reparto qui sopra.
-              </p>
+            <div className="mt-2">
+              <div className="plate p-6 text-center">
+                <p className="font-display text-lg">Lista vuota</p>
+                <p className="mt-1 text-sm text-[var(--color-ink-3)]">
+                  Cerca un prodotto o apri un reparto qui sopra.
+                </p>
+              </div>
+
+              {frequent.length > 0 && (
+                <div className="mt-7">
+                  <div className="mb-2 flex items-center gap-2">
+                    <h3 className="tag text-[var(--color-ink-2)]">Comprati spesso</h3>
+                    <span className="h-px flex-1 bg-[var(--color-line)]" />
+                  </div>
+                  <ul className="grid grid-cols-2 gap-2">
+                    {frequent.map((product) => (
+                      <li key={product.id}>
+                        <button
+                          type="button"
+                          onClick={() => startTransition(() => addProduct(listId, product.id))}
+                          className="plate flex w-full items-center gap-2.5 p-2.5 text-left transition-transform active:scale-[0.98]"
+                        >
+                          <ProductAvatar
+                            iconKey={product.iconKey}
+                            fallback={product.categoryIcon}
+                            colorToken={product.colorToken}
+                            size="sm"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{product.name}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             grouped.map(([categoryName, group]) => (

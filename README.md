@@ -1,36 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Corsia
 
-## Getting Started
+Webapp mobile-first per fare la spesa all'Extracoop di Villanova: componi la
+lista, Corsia calcola in che ordine prendere le cose e ti disegna il percorso
+sulla mappa del negozio.
 
-First, run the development server:
+Uso personale, gira in LAN, nessuna autenticazione.
+
+## Come funziona
+
+1. **Mappa.** Il negozio e' una griglia di celle da 50 cm (60 x 40 = 30 x 20 m).
+   Ogni cella e' percorribile o occupata. La griglia non si vede mai: viene
+   disegnata fondendo le celle contigue in blocchi arrotondati, tinti per
+   reparto.
+2. **Posizioni.** Ogni prodotto ha un punto di prelievo (corsia, lato, campata).
+   Al primo caricamento la posizione e' *ipotizzata* dalla categoria; dal
+   pulsante "Non e' qui" in modalita' spesa la correggi sulla mappa e diventa
+   *confermata*. Le posizioni confermate non vengono mai sovrascritte da un
+   nuovo import del catalogo.
+3. **Percorso.** Le tappe sulla stessa cella collassano in un nodo, le distanze
+   reali si misurano con una BFS sulla griglia, l'ordine si risolve con
+   Held-Karp fino a 12 tappe (ottimo garantito) e con 2-opt + Or-opt oltre,
+   partendo dall'ordine naturale delle corsie. Cambiare corsia costa un extra:
+   e' cio' che evita l'avanti e indietro.
+4. **Catena del freddo.** Di default il giro e' a blocchi: normale, fragile,
+   fresco, surgelato, casse. Surgelati e uova finiscono sempre per ultimi.
+   Dalla schermata Percorso si passa a "Piu' corto" quando non serve.
+
+## Avvio
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env   # metti una password a scelta
+docker compose up -d db
+docker compose run --rm migrate
+docker compose up -d web
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App su http://localhost:3000 (e sull'IP della macchina in LAN, per il telefono).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Sviluppo
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+docker compose up -d db
+npm install
+npx prisma migrate deploy
+npx tsx prisma/seed.ts
+npm run dev
+```
 
-## Learn More
+### Comandi
 
-To learn more about Next.js, take a look at the following resources:
+| Comando | Cosa fa |
+|---|---|
+| `npm run dev` | Server di sviluppo |
+| `npm test` | Test del motore di routing e della planimetria |
+| `npx tsx prisma/seed.ts` | Ricarica mappa, categorie e catalogo |
+| `npx tsx scripts/scrape-coop.ts` | Riscarica il catalogo da coopshop.it |
+| `npx tsx scripts/check-route.mts` | Calcola un percorso di prova da riga di comando |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Catalogo
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Lo scraping di coopshop.it e' **offline e one-shot**: l'app non contatta mai
+quel sito a runtime, legge solo `data/catalog.snapshot.json`, che sta nel
+repository. Se il sito cambia, l'app continua a funzionare e va corretto solo
+lo script. L'importer rispetta `robots.txt` (che non vieta nulla), si presenta
+con uno User-Agent proprio e attende 350 ms fra una richiesta e l'altra.
 
-## Deploy on Vercel
+Senza snapshot il seed usa la lista curata a mano in `src/lib/store/catalog.ts`
+(248 prodotti), quindi l'app e' utilizzabile anche senza mai lanciare
+l'importer.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Struttura
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+prisma/schema.prisma        modello dati
+prisma/seed.ts              mappa, corsie, categorie, catalogo
+src/lib/routing/            griglia, BFS, A*, TSP, costruzione percorso (puro, testato)
+src/lib/map/                fusione celle in rettangoli, string-pulling, raccordi
+src/lib/store/              planimetria iniziale, catalogo curato, regole icone
+src/components/map/         StoreMap (render) e MapEditor (planimetria)
+src/components/icons/       131 icone SVG disegnate a mano
+src/app/                    pagine App Router e Server Action
+scripts/scrape-coop.ts      importer del catalogo
+```
+
+`src/lib/routing` non conosce React ne' Prisma: riceve strutture dati semplici
+ed e' coperto da test. Le Server Action sono l'unico punto che parla col
+database.
+
+## Modificare la mappa
+
+`/mappa` mostra la planimetria, `/mappa/modifica` la fa modificare: scegli uno
+strumento (scaffale, banco, frigo, surgelati, casse, muro, gomma) e dipingi con
+il dito; con "Sposta" trascini e con i tasti + / − zoomi. Al salvataggio la
+griglia di percorribilita' viene ricalcolata e i blocchi ricostruiti
+raggruppando le celle contigue; se qualche punto di prelievo finisce sotto un
+blocco o diventa irraggiungibile dall'ingresso, il salvataggio lo dice invece
+di nasconderlo.
+
+## Note
+
+- La planimetria iniziale e' un ipermercato **plausibile**, non un rilievo del
+  negozio reale: e' pensata per essere corretta dall'editor.
+- L'app e' una PWA: la modalita' spesa continua a funzionare sulle pagine gia'
+  aperte anche senza rete, che nei supermercati serve.
+- `prisma` porta con se una vulnerabilita' nota di `deepmerge-ts` (stack
+  exhaustion): riguarda solo la CLI in fase di build su input nostri, non il
+  runtime dell'app. `npm audit fix --force` porterebbe a una release candidate
+  di Prisma 8, quindi resta cosi'.
