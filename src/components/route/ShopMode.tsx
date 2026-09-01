@@ -28,6 +28,8 @@ type Props = {
   checked: Record<string, boolean>;
   locations: PickLocation[];
   map: {
+    width: number;
+    height: number;
     grid: string[];
     fixtures: MapFixture[];
     entrance: [number, number];
@@ -293,8 +295,10 @@ export function ShopMode({
 
         <div className="plate mt-3 overflow-hidden">
           <p className="tag px-4 pt-3 text-[var(--color-ink-3)]">Tutto il percorso</p>
-          <div className="h-40 p-1">
+          <div className="p-1">
             <StoreMap
+              aspect={map.width / map.height}
+              maxHeightPx={240}
               grid={map.grid}
               fixtures={map.fixtures}
               entrance={map.entrance}

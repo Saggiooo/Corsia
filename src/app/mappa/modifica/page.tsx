@@ -48,12 +48,16 @@ export default async function MapEditorPage({
         <span className="w-9" />
       </header>
 
+      {/* La chiave rimonta l'editor dopo un ridimensionamento: lo stato
+          dipinto era stato inizializzato sulle dimensioni vecchie. */}
       <MapEditor
+        key={`${store.gridW}x${store.gridH}`}
         storeId={store.id}
         storeName={store.name}
         status={store.status}
         width={store.gridW}
         height={store.gridH}
+        cellSizeCm={store.cellSizeCm}
         cells={cells}
         entrance={[store.entranceX, store.entranceY]}
         checkout={[store.checkoutX, store.checkoutY]}

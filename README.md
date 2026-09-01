@@ -328,12 +328,22 @@ l'intervallo ("5–6"): disegnate una sopra l'altra sarebbero illeggibili.
 
 Tre passi, tutti da `/admin`.
 
+**0. Dai le dimensioni.** Nell'editor, il pulsante "Dimensioni" imposta
+larghezza e altezza **in metri**: i negozi non hanno tutti la stessa forma, e
+uno stretto e alto deve poter restare tale. Ingrandire non tocca il disegno;
+rimpicciolire taglia via quello che resta fuori, quindi prima dice quante
+celle e quanti punti di prelievo perderesti e chiede conferma.
+
+Le mappe seguono le proporzioni del negozio invece di stare in una fascia di
+altezza fissa, quindi una planimetria verticale si vede verticale.
+
 **1. Disegna la planimetria.** `Planimetrie` → scegli il supermercato. La
 palette e' fatta di reparti, non di forme generiche: dipingendo "Ortofrutta" il
 blocco nasce col suo colore e col suo nome, che diventera' il nome della
 corsia. Con "Sposta" trascini, coi tasti + / − zoomi. Al salvataggio la griglia
 di percorribilita' viene ricalcolata e i blocchi ricostruiti raggruppando le
-celle contigue dello stesso tipo, colore e nome.
+celle contigue dello stesso tipo, colore e nome. Il perimetro e' sempre muro:
+e' il confine del negozio, non qualcosa da ricordarsi di disegnare.
 
 **2. Genera corsie e punti di prelievo.** Il pulsante nell'editor ricava
 entrambi dalla planimetria: ogni blocco su cui si prende merce diventa una

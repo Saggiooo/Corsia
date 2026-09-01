@@ -27,6 +27,8 @@ export async function getDefaultStore(userId: string) {
 }
 
 export type MapData = {
+  width: number;
+  height: number;
   grid: string[];
   fixtures: MapFixture[];
   entrance: [number, number];
@@ -80,6 +82,8 @@ export async function getMapData(storeId?: string): Promise<MapData> {
   }
 
   return {
+    width: store.gridW,
+    height: store.gridH,
     grid: store.grid as string[],
     cellSizeCm: store.cellSizeCm,
     entrance: [store.entranceX, store.entranceY],

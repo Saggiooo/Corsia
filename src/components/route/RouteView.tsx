@@ -14,7 +14,15 @@ type Props = {
   estMinutes: number;
   snapshot: RouteSnapshot;
   path: number[][];
-  map: { grid: string[]; fixtures: MapFixture[]; entrance: [number, number]; checkout: [number, number]; labels: MapLabel[] };
+  map: {
+    width: number;
+    height: number;
+    grid: string[];
+    fixtures: MapFixture[];
+    entrance: [number, number];
+    checkout: [number, number];
+    labels: MapLabel[];
+  };
 };
 
 export function RouteView({ listId, mode, distanceM, estMinutes, snapshot, path, map }: Props) {
@@ -40,8 +48,10 @@ export function RouteView({ listId, mode, distanceM, estMinutes, snapshot, path,
         className="plate grain relative mt-4 block w-full overflow-hidden p-0"
         aria-label="Apri la mappa a schermo intero"
       >
-        <div className="h-64 w-full">
+        <div className="w-full">
           <StoreMap
+            aspect={map.width / map.height}
+            maxHeightPx={340}
             grid={map.grid}
             fixtures={map.fixtures}
             entrance={map.entrance}

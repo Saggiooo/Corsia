@@ -440,19 +440,14 @@ export async function saveMap(input: {
   await requireAdmin();
   const store = await prisma.store.findUniqueOrThrow({ where: { id: input.storeId } });
 
-  const blockedKinds = new Set(["shelf", "counter", "fridge", "freezer", "checkout", "wall", "promo"]);
+  const blockedKinds = BLOCKED_KINDS;
   const kindOf = new Map<string, string>();
   for (const cell of input.cells) kindOf.set(`${cell.x},${cell.y}`, cell.kind);
 
-  const rows: string[] = [];
-  for (let y = 0; y < store.gridH; y++) {
-    let row = "";
-    for (let x = 0; x < store.gridW; x++) {
-      const kind = kindOf.get(`${x},${y}`);
-      row += kind && blockedKinds.has(kind) ? "#" : ".";
-    }
-    rows.push(row);
-  }
+  const rows = buildGrid(store.gridW, store.gridH, (x, y) => {
+    const kind = kindOf.get(`${x},${y}`);
+    return kind !== undefined && blockedKinds.has(kind);
+  });
 
   const grid = parseGrid(rows);
   const locations = await prisma.location.findMany({
@@ -474,6 +469,9 @@ export async function saveMap(input: {
   // con lo stesso strumento restano blocchi distinti, con la loro etichetta.
   const byStyle = new Map<string, number[][]>();
   for (const cell of input.cells) {
+    // Difesa: una cella fuori dai bordi corromperebbe la mappa in silenzio.
+    if (cell.x < 0 || cell.y < 0 || cell.x >= store.gridW || cell.y >= store.gridH) continue;
+
     const style = `${cell.kind}::${cell.color ?? ""}::${cell.label ?? ""}`;
     byStyle.set(style, [...(byStyle.get(style) ?? []), [cell.x, cell.y]]);
   }
@@ -808,4 +806,119 @@ export async function setUserRole(userId: string, role: "admin" | "member") {
 
   await prisma.user.update({ where: { id: userId }, data: { role } });
   revalidatePath("/", "layout");
+}
+
+/** Tipi di blocco che rendono una cella non percorribile. */
+const BLOCKED_KINDS = new Set(["shelf", "counter", "fridge", "freezer", "checkout", "wall", "promo"]);
+
+/**
+ * Ricostruisce le righe di percorribilita'. Il perimetro e' sempre muro: e' il
+ * confine del negozio, non qualcosa che l'admin deve ricordarsi di disegnare.
+ */
+function buildGrid(width: number, height: number, blocked: (x: number, y: number) => boolean): string[] {
+  const rows: string[] = [];
+
+  for (let y = 0; y < height; y++) {
+    let row = "";
+    for (let x = 0; x < width; x++) {
+      const edge = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+      row += edge || blocked(x, y) ? "#" : ".";
+    }
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+const MIN_SIDE = 20;
+const MAX_SIDE = 240;
+
+/**
+ * Cambia le dimensioni del negozio. I negozi non sono tutti larghi e bassi:
+ * uno puo' essere stretto e alto, e la mappa deve poterlo dire.
+ *
+ * Rimpicciolire taglia via quello che resta fuori, quindi prima si dice cosa
+ * si perde e si chiede conferma.
+ */
+export async function resizeStore(
+  storeId: string,
+  gridW: number,
+  gridH: number,
+  force = false,
+): Promise<
+  | { ok: true; gridW: number; gridH: number }
+  | { ok: false; reason: "loss"; cells: number; locations: number }
+  | { ok: false; reason: "range" }
+> {
+  await requireAdmin();
+
+  if (
+    !Number.isFinite(gridW) ||
+    !Number.isFinite(gridH) ||
+    gridW < MIN_SIDE ||
+    gridH < MIN_SIDE ||
+    gridW > MAX_SIDE ||
+    gridH > MAX_SIDE
+  ) {
+    return { ok: false, reason: "range" };
+  }
+
+  const store = await prisma.store.findUniqueOrThrow({ where: { id: storeId } });
+  const fixtures = await prisma.fixture.findMany({ where: { storeId } });
+
+  const inside = ([x, y]: number[]) => x >= 0 && y >= 0 && x < gridW && y < gridH;
+
+  const lostCells = fixtures.reduce(
+    (total, fixture) => total + (fixture.cells as number[][]).filter((cell) => !inside(cell)).length,
+    0,
+  );
+  const lostLocations = await prisma.location.count({
+    where: { storeId, OR: [{ accessX: { gte: gridW } }, { accessY: { gte: gridH } }] },
+  });
+
+  if ((lostCells > 0 || lostLocations > 0) && !force) {
+    return { ok: false, reason: "loss", cells: lostCells, locations: lostLocations };
+  }
+
+  const kept = new Map<string, string>();
+
+  await prisma.$transaction(async (tx) => {
+    for (const fixture of fixtures) {
+      const cells = (fixture.cells as number[][]).filter(inside);
+
+      if (cells.length === 0) {
+        await tx.fixture.delete({ where: { id: fixture.id } });
+        continue;
+      }
+
+      if (cells.length !== (fixture.cells as number[][]).length) {
+        await tx.fixture.update({ where: { id: fixture.id }, data: { cells } });
+      }
+
+      for (const [x, y] of cells) kept.set(`${x},${y}`, fixture.kind);
+    }
+
+    await tx.location.deleteMany({
+      where: { storeId, OR: [{ accessX: { gte: gridW } }, { accessY: { gte: gridH } }] },
+    });
+
+    await tx.store.update({
+      where: { id: storeId },
+      data: {
+        gridW,
+        gridH,
+        grid: buildGrid(gridW, gridH, (x, y) => {
+          const kind = kept.get(`${x},${y}`);
+          return kind !== undefined && BLOCKED_KINDS.has(kind);
+        }),
+        entranceX: Math.min(Math.max(store.entranceX, 1), gridW - 2),
+        entranceY: Math.min(Math.max(store.entranceY, 1), gridH - 2),
+        checkoutX: Math.min(Math.max(store.checkoutX, 1), gridW - 2),
+        checkoutY: Math.min(Math.max(store.checkoutY, 1), gridH - 2),
+      },
+    });
+  });
+
+  revalidatePath("/", "layout");
+  return { ok: true, gridW, gridH };
 }

@@ -148,13 +148,15 @@ export default async function HomePage({
                   Non è ancora mappato: appena la planimetria è pronta lo trovi qui.
                 </p>
               ) : (
-                <div className="h-44 px-2 pb-3 opacity-90">
+                <div className="px-2 pb-3 opacity-90">
                   <StoreMap
                     grid={map.grid}
                     fixtures={map.fixtures}
                     entrance={map.entrance}
                     checkout={map.checkout}
-                    className="h-full w-full"
+                    aspect={map.width / map.height}
+                    maxHeightPx={280}
+                    className="mx-auto w-full"
                   />
                 </div>
               )}

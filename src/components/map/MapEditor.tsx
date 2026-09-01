@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { generateAisles, saveMap, setStoreStatus, type CellPaint } from "@/app/actions";
+import { generateAisles, resizeStore, saveMap, setStoreStatus, type CellPaint } from "@/app/actions";
 import { mergeCells } from "@/lib/map/shapes";
 
 type Tool = {
@@ -65,6 +65,7 @@ type Props = {
   status: "active" | "comingSoon";
   width: number;
   height: number;
+  cellSizeCm: number;
   cells: CellPaint[];
   entrance: [number, number];
   checkout: [number, number];
@@ -76,6 +77,7 @@ export function MapEditor({
   status,
   width,
   height,
+  cellSizeCm,
   cells,
   entrance,
   checkout,
@@ -91,6 +93,12 @@ export function MapEditor({
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
   const [report, setReport] = useState<{ blocked: string[]; unreachable: string[] } | null>(null);
   const [generated, setGenerated] = useState<string | null>(null);
+  const [sizing, setSizing] = useState(false);
+  const [size, setSize] = useState(() => ({
+    w: Math.round((width * cellSizeCm) / 100),
+    h: Math.round((height * cellSizeCm) / 100),
+  }));
+  const [sizeWarning, setSizeWarning] = useState<string | null>(null);
   const [confirmWipe, setConfirmWipe] = useState<number | null>(null);
   const [saving, startSaving] = useTransition();
   const router = useRouter();
@@ -204,6 +212,27 @@ export function MapEditor({
 
       setReport(result);
       router.refresh();
+    });
+
+  const applySize = (force: boolean) =>
+    startSaving(async () => {
+      const gridW = Math.round((size.w * 100) / cellSizeCm);
+      const gridH = Math.round((size.h * 100) / cellSizeCm);
+      const result = await resizeStore(storeId, gridW, gridH, force);
+
+      if (result.ok) {
+        setSizeWarning(null);
+        setSizing(false);
+        router.refresh();
+        return;
+      }
+
+      setSizeWarning(
+        result.reason === "range"
+          ? `Ogni lato deve stare fra ${(20 * cellSizeCm) / 100} e ${(240 * cellSizeCm) / 100} metri.`
+          : `Rimpicciolendo cosi' perdi ${result.cells} celle disegnate e ${result.locations} punti di prelievo. Tocca di nuovo per confermare.`,
+      );
+
     });
 
   const generate = (force: boolean) =>
@@ -348,6 +377,63 @@ export function MapEditor({
               </>
             )}
           </div>
+        )}
+
+        {sizing ? (
+          <div className="mb-3 rounded-2xl border border-[var(--color-line)] bg-[var(--color-paper-2)] p-3">
+            <p className="tag text-[var(--color-ink-3)]">Dimensioni del negozio, in metri</p>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min={10}
+                max={120}
+                value={size.w}
+                onChange={(e) => setSize((v) => ({ ...v, w: Number(e.target.value) || 0 }))}
+                aria-label="Larghezza in metri"
+                className="font-display h-11 w-20 rounded-[12px] bg-[var(--color-paper)] text-center text-lg outline-none"
+              />
+              <span className="text-[var(--color-ink-3)]">×</span>
+              <input
+                type="number"
+                min={10}
+                max={120}
+                value={size.h}
+                onChange={(e) => setSize((v) => ({ ...v, h: Number(e.target.value) || 0 }))}
+                aria-label="Altezza in metri"
+                className="font-display h-11 w-20 rounded-[12px] bg-[var(--color-paper)] text-center text-lg outline-none"
+              />
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => applySize(sizeWarning?.startsWith("Rimpicciolendo") ?? false)}
+                className="ml-auto rounded-full bg-[var(--color-ink)] px-4 py-2.5 text-sm text-[var(--color-paper)] disabled:opacity-50"
+              >
+                Applica
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSizing(false);
+                  setSizeWarning(null);
+                }}
+                className="rounded-full border border-[var(--color-line)] px-3 py-2.5 text-sm"
+              >
+                Chiudi
+              </button>
+            </div>
+
+            {sizeWarning && (
+              <p className="mt-2 text-sm text-[var(--color-signal)]">{sizeWarning}</p>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSizing(true)}
+            className="mb-3 w-full rounded-full border border-[var(--color-line)] py-2 text-xs text-[var(--color-ink-2)]"
+          >
+            Dimensioni: {Math.round((width * cellSizeCm) / 100)} × {Math.round((height * cellSizeCm) / 100)} m
+          </button>
         )}
 
         <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">

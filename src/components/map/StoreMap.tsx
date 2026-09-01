@@ -35,6 +35,12 @@ type Props = {
   targetCell?: { x: number; y: number };
   interactive?: boolean;
   padding?: number;
+  /**
+   * Proporzioni del riquadro. I negozi non hanno tutti la stessa forma: senza
+   * questo, uno stretto e alto verrebbe schiacciato in una fascia orizzontale.
+   */
+  aspect?: number;
+  maxHeightPx?: number;
   className?: string;
   onPickCell?: (x: number, y: number) => void;
 };
@@ -62,6 +68,8 @@ export function StoreMap({
   targetCell,
   interactive = false,
   padding = 1,
+  aspect,
+  maxHeightPx,
   className,
   onPickCell,
 }: Props) {
@@ -232,7 +240,15 @@ export function StoreMap({
     setTransform((t) => ({ ...t, k: Math.min(6, Math.max(0.6, t.k * factor)) }));
 
   return (
-    <div className={className} style={{ position: "relative", touchAction: interactive ? "none" : "auto" }}>
+    <div
+      className={className}
+      style={{
+        position: "relative",
+        touchAction: interactive ? "none" : "auto",
+        ...(aspect ? { aspectRatio: String(aspect) } : {}),
+        ...(maxHeightPx ? { maxHeight: maxHeightPx } : {}),
+      }}
+    >
       <svg
         ref={svgRef}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
