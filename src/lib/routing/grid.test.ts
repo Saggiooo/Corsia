@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseGrid, bfsFrom, UNREACHABLE } from "./grid";
+import { parseGrid, bfsFrom, nearestWalkable, UNREACHABLE } from "./grid";
 
 describe("parseGrid", () => {
   test("legge dimensioni e percorribilita' dalle righe", () => {
@@ -37,5 +37,34 @@ describe("bfsFrom", () => {
 
     expect(dist[grid.index(2, 0)]).toBe(UNREACHABLE);
     expect(dist[grid.index(1, 1)]).toBe(UNREACHABLE);
+  });
+});
+
+describe("nearestWalkable", () => {
+  test("lascia dov'e' una cella gia' percorribile", () => {
+    const grid = parseGrid(["...", ".#.", "..."]);
+
+    expect(nearestWalkable(grid, { x: 2, y: 2 })).toEqual({ x: 2, y: 2 });
+  });
+
+  test("sposta un segnaposto finito dentro un blocco sulla cella libera accanto", () => {
+    // Casse disegnate come blocco: il segnaposto ci finisce sopra.
+    const grid = parseGrid([".....", ".###.", "....."]);
+    const moved = nearestWalkable(grid, { x: 2, y: 1 })!;
+
+    expect(grid.walkable(moved.x, moved.y)).toBe(true);
+    expect(Math.abs(moved.x - 2) + Math.abs(moved.y - 1)).toBe(1);
+  });
+
+  test("esce anche da un blocco spesso", () => {
+    const grid = parseGrid([".....", ".###.", ".###.", ".###.", "....."]);
+    const moved = nearestWalkable(grid, { x: 2, y: 2 })!;
+
+    expect(grid.walkable(moved.x, moved.y)).toBe(true);
+    expect(Math.abs(moved.x - 2) + Math.abs(moved.y - 2)).toBe(2);
+  });
+
+  test("restituisce null se non c'e' nessuna cella libera", () => {
+    expect(nearestWalkable(parseGrid(["##", "##"]), { x: 0, y: 0 })).toBeNull();
   });
 });

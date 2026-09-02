@@ -79,3 +79,27 @@ const NEIGHBOURS = [
   [0, 1],
   [0, -1],
 ] as const;
+
+/**
+ * Cella percorribile piu' vicina a `point`, per distanza di Manhattan.
+ * Restituisce null solo se la griglia e' tutta occupata.
+ *
+ * Serve ai segnaposto: ingresso e casse finiscono facilmente sopra il blocco
+ * che rappresentano (il banco delle casse e' un ostacolo), e da li' non
+ * partirebbe nessun percorso.
+ */
+export function nearestWalkable(grid: Grid, point: Point): Point | null {
+  if (grid.walkable(point.x, point.y)) return { x: point.x, y: point.y };
+
+  for (let radius = 1; radius <= grid.w + grid.h; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const dy = radius - Math.abs(dx);
+      const x = point.x + dx;
+
+      if (grid.walkable(x, point.y - dy)) return { x, y: point.y - dy };
+      if (grid.walkable(x, point.y + dy)) return { x, y: point.y + dy };
+    }
+  }
+
+  return null;
+}

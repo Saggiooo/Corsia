@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getStore, pruneEmptyLists } from "@/lib/queries";
 import { requireAdmin, requireUser } from "@/lib/auth/session";
-import { bfsFrom, parseGrid, UNREACHABLE } from "@/lib/routing/grid";
+import { bfsFrom, nearestWalkable, parseGrid, UNREACHABLE } from "@/lib/routing/grid";
 import { groupCells } from "@/lib/map/shapes";
 import { deriveLayout } from "@/lib/store/derive";
 import { buildRoute, type PickClass, type RouteStop } from "@/lib/routing/route";
@@ -245,10 +245,18 @@ export async function computeRoute(listId: string, mode?: "shortest" | "coldchai
     });
   }
 
+  const grid = parseGrid(store.grid as string[]);
+
+  // Difesa sui dati gia' salvati: un segnaposto rimasto sopra un blocco
+  // renderebbe irraggiungibile ogni tappa, non solo se stesso.
+  const start = nearestWalkable(grid, { x: store.entranceX, y: store.entranceY });
+  const end = nearestWalkable(grid, { x: store.checkoutX, y: store.checkoutY });
+  if (!start || !end) throw new Error("La planimetria non ha nemmeno una cella libera");
+
   const result = buildRoute({
-    grid: parseGrid(store.grid as string[]),
-    start: { x: store.entranceX, y: store.entranceY },
-    end: { x: store.checkoutX, y: store.checkoutY },
+    grid,
+    start,
+    end,
     stops,
     cellSizeCm: store.cellSizeCm,
     mode: chosenMode,
@@ -429,17 +437,36 @@ export async function routeAndOpen(listId: string) {
 export type CellPaint = { x: number; y: number; kind: string; color?: string | null; label?: string | null };
 
 /**
+ * Esito del salvataggio. `entrance` e `checkout` sono i segnaposto davvero
+ * salvati: quelli appoggiati su un blocco vengono spostati sulla cella libera
+ * piu' vicina, cosi' l'editor puo' rimetterli dove sono finiti.
+ */
+export type MapReport = {
+  blocked: string[];
+  unreachable: string[];
+  moved: ("entrance" | "checkout")[];
+  /** Casse non raggiungibili dall'ingresso: nessun percorso e' possibile. */
+  disconnected: boolean;
+  entrance: [number, number];
+  checkout: [number, number];
+};
+
+/**
  * Salva la planimetria disegnata nell'editor: ricalcola la griglia di
  * percorribilita' e ricostruisce i blocchi raggruppando le celle contigue
  * dello stesso tipo. Corsie e punti di prelievo restano invariati; se qualche
  * punto finisce sotto un blocco, la funzione lo segnala invece di nasconderlo.
+ *
+ * Ingresso e casse devono stare su una cella percorribile: sono gli estremi
+ * del percorso, e un segnaposto sopra il banco delle casse renderebbe
+ * irraggiungibile ogni singolo prodotto della lista.
  */
 export async function saveMap(input: {
   storeId: string;
   cells: CellPaint[];
   entrance: [number, number];
   checkout: [number, number];
-}): Promise<{ blocked: string[]; unreachable: string[] }> {
+}): Promise<MapReport> {
   await requireAdmin();
   const store = await prisma.store.findUniqueOrThrow({ where: { id: input.storeId } });
 
@@ -453,6 +480,15 @@ export async function saveMap(input: {
   });
 
   const grid = parseGrid(rows);
+
+  const entrance = nearestWalkable(grid, { x: input.entrance[0], y: input.entrance[1] });
+  const checkout = nearestWalkable(grid, { x: input.checkout[0], y: input.checkout[1] });
+  if (!entrance || !checkout) throw new Error("La planimetria non ha nemmeno una cella libera");
+
+  const moved: ("entrance" | "checkout")[] = [];
+  if (entrance.x !== input.entrance[0] || entrance.y !== input.entrance[1]) moved.push("entrance");
+  if (checkout.x !== input.checkout[0] || checkout.y !== input.checkout[1]) moved.push("checkout");
+
   const locations = await prisma.location.findMany({
     where: { storeId: store.id },
     include: { aisle: true },
@@ -462,7 +498,8 @@ export async function saveMap(input: {
     .filter((l) => !grid.walkable(l.accessX, l.accessY))
     .map((l) => l.label ?? l.aisle.name);
 
-  const reach = bfsFrom(grid, { x: input.entrance[0], y: input.entrance[1] });
+  const reach = bfsFrom(grid, entrance);
+  const disconnected = reach[grid.index(checkout.x, checkout.y)] === UNREACHABLE;
   const unreachable = locations
     .filter((l) => grid.walkable(l.accessX, l.accessY))
     .filter((l) => reach[grid.index(l.accessX, l.accessY)] === UNREACHABLE)
@@ -501,7 +538,7 @@ export async function saveMap(input: {
       data: {
         storeId: store.id,
         kind: "entrance",
-        cells: [[input.entrance[0], input.entrance[1]]],
+        cells: [[entrance.x, entrance.y]],
       },
     });
 
@@ -509,16 +546,23 @@ export async function saveMap(input: {
       where: { id: store.id },
       data: {
         grid: rows,
-        entranceX: input.entrance[0],
-        entranceY: input.entrance[1],
-        checkoutX: input.checkout[0],
-        checkoutY: input.checkout[1],
+        entranceX: entrance.x,
+        entranceY: entrance.y,
+        checkoutX: checkout.x,
+        checkoutY: checkout.y,
       },
     });
   });
 
   revalidatePath("/", "layout");
-  return { blocked, unreachable };
+  return {
+    blocked,
+    unreachable,
+    moved,
+    disconnected,
+    entrance: [entrance.x, entrance.y],
+    checkout: [checkout.x, checkout.y],
+  };
 }
 
 const KIND_COLOR: Record<string, string> = {
@@ -884,6 +928,28 @@ export async function resizeStore(
   }
 
   const kept = new Map<string, string>();
+  for (const fixture of fixtures) {
+    for (const [x, y] of (fixture.cells as number[][]).filter(inside)) kept.set(`${x},${y}`, fixture.kind);
+  }
+
+  const rows = buildGrid(gridW, gridH, (x, y) => {
+    const kind = kept.get(`${x},${y}`);
+    return kind !== undefined && BLOCKED_KINDS.has(kind);
+  });
+
+  // I segnaposto vanno rimessi dentro i nuovi bordi, e su una cella libera:
+  // ritagliando il negozio possono finire sotto un muro o dentro un blocco.
+  const resized = parseGrid(rows);
+  const clamp = (value: number, max: number) => Math.min(Math.max(value, 1), max - 2);
+  const entrance = nearestWalkable(resized, {
+    x: clamp(store.entranceX, gridW),
+    y: clamp(store.entranceY, gridH),
+  });
+  const checkout = nearestWalkable(resized, {
+    x: clamp(store.checkoutX, gridW),
+    y: clamp(store.checkoutY, gridH),
+  });
+  if (!entrance || !checkout) throw new Error("La planimetria non ha nemmeno una cella libera");
 
   await prisma.$transaction(async (tx) => {
     for (const fixture of fixtures) {
@@ -897,8 +963,6 @@ export async function resizeStore(
       if (cells.length !== (fixture.cells as number[][]).length) {
         await tx.fixture.update({ where: { id: fixture.id }, data: { cells } });
       }
-
-      for (const [x, y] of cells) kept.set(`${x},${y}`, fixture.kind);
     }
 
     await tx.location.deleteMany({
@@ -910,14 +974,11 @@ export async function resizeStore(
       data: {
         gridW,
         gridH,
-        grid: buildGrid(gridW, gridH, (x, y) => {
-          const kind = kept.get(`${x},${y}`);
-          return kind !== undefined && BLOCKED_KINDS.has(kind);
-        }),
-        entranceX: Math.min(Math.max(store.entranceX, 1), gridW - 2),
-        entranceY: Math.min(Math.max(store.entranceY, 1), gridH - 2),
-        checkoutX: Math.min(Math.max(store.checkoutX, 1), gridW - 2),
-        checkoutY: Math.min(Math.max(store.checkoutY, 1), gridH - 2),
+        grid: rows,
+        entranceX: entrance.x,
+        entranceY: entrance.y,
+        checkoutX: checkout.x,
+        checkoutY: checkout.y,
       },
     });
   });

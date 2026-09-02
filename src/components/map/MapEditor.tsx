@@ -3,7 +3,14 @@
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { generateAisles, resizeStore, saveMap, setStoreStatus, type CellPaint } from "@/app/actions";
+import {
+  generateAisles,
+  resizeStore,
+  saveMap,
+  setStoreStatus,
+  type CellPaint,
+  type MapReport,
+} from "@/app/actions";
 import { mergeCells } from "@/lib/map/shapes";
 
 type Tool = {
@@ -51,6 +58,9 @@ const FILL: Record<string, string> = {
   wall: "var(--color-ink-2)",
 };
 
+/** Tipi di blocco su cui non si cammina: la copia client di BLOCKED_KINDS. */
+const BLOCKED_KINDS = new Set(["shelf", "counter", "fridge", "freezer", "checkout", "wall", "promo"]);
+
 const STROKE: Record<string, string> = {
   counter: "var(--meat)",
   fridge: "var(--dairy)",
@@ -90,8 +100,9 @@ export function MapEditor({
   const [tool, setTool] = useState<string | null>(null);
   const [markers, setMarkers] = useState({ entrance, checkout });
   const [placing, setPlacing] = useState<"entrance" | "checkout" | null>(null);
+  const [placingError, setPlacingError] = useState<string | null>(null);
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
-  const [report, setReport] = useState<{ blocked: string[]; unreachable: string[] } | null>(null);
+  const [report, setReport] = useState<MapReport | null>(null);
   const [generated, setGenerated] = useState<string | null>(null);
   const [sizing, setSizing] = useState(false);
   const [size, setSize] = useState(() => ({
@@ -140,6 +151,16 @@ export function MapEditor({
     [transform, view.h, view.w, view.x, view.y, width, height],
   );
 
+  /** Una cella e' occupata se ci sta sopra un blocco, o se e' il perimetro. */
+  const isBlocked = useCallback(
+    (x: number, y: number) => {
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) return true;
+      const style = painted.get(`${x},${y}`);
+      return style !== undefined && BLOCKED_KINDS.has(style.split("::")[0]);
+    },
+    [painted, width, height],
+  );
+
   const paintAt = (clientX: number, clientY: number) => {
     const cell = toCell(clientX, clientY);
     if (!cell || !tool) return;
@@ -160,8 +181,20 @@ export function MapEditor({
     if (placing) {
       const cell = toCell(event.clientX, event.clientY);
       if (cell) {
+        // Ingresso e casse sono gli estremi del percorso: sopra un blocco non
+        // ci si arriva, e senza di loro nessun prodotto risulta raggiungibile.
+        if (isBlocked(cell.x, cell.y)) {
+          setPlacingError(
+            placing === "entrance"
+              ? "Lì c'è un blocco: metti l'ingresso su una cella libera."
+              : "Lì c'è un blocco: metti le casse sul corridoio davanti al banco.",
+          );
+          return;
+        }
+
         setMarkers((m) => ({ ...m, [placing]: [cell.x, cell.y] as [number, number] }));
         setPlacing(null);
+        setPlacingError(null);
       }
       return;
     }
@@ -211,6 +244,7 @@ export function MapEditor({
       });
 
       setReport(result);
+      setMarkers({ entrance: result.entrance, checkout: result.checkout });
       router.refresh();
     });
 
@@ -344,8 +378,11 @@ export function MapEditor({
         </div>
 
         {placing && (
-          <p className="absolute inset-x-3 top-3 rounded-full bg-[var(--color-ink)] px-4 py-2 text-center text-sm text-[var(--color-paper)]">
-            Tocca dove mettere {placing === "entrance" ? "l'ingresso" : "le casse"}
+          <p
+            className="absolute inset-x-3 top-3 rounded-full px-4 py-2 text-center text-sm text-[var(--color-paper)]"
+            style={{ background: placingError ? "var(--color-signal)" : "var(--color-ink)" }}
+          >
+            {placingError ?? `Tocca dove mettere ${placing === "entrance" ? "l'ingresso" : "le casse"}`}
           </p>
         )}
       </div>
@@ -356,11 +393,28 @@ export function MapEditor({
       >
         {report && (
           <div className="mb-3 rounded-2xl border border-[var(--color-line)] bg-[var(--color-paper-2)] p-3 text-sm">
-            {report.blocked.length === 0 && report.unreachable.length === 0 ? (
+            {report.blocked.length === 0 &&
+            report.unreachable.length === 0 &&
+            report.moved.length === 0 &&
+            !report.disconnected ? (
               <p className="text-[var(--color-brand)]">Mappa salvata. Tutti i punti di prelievo sono raggiungibili.</p>
             ) : (
               <>
                 <p className="font-medium text-[var(--color-signal)]">Mappa salvata, ma con problemi:</p>
+                {report.moved.length > 0 && (
+                  <p className="mt-1 text-[var(--color-ink-2)]">
+                    {report.moved.includes("entrance") && report.moved.includes("checkout")
+                      ? "Ingresso e casse erano dentro un blocco: li ho spostati sulla cella libera più vicina."
+                      : report.moved.includes("entrance")
+                        ? "L'ingresso era dentro un blocco: l'ho spostato sulla cella libera più vicina."
+                        : "Le casse erano dentro un blocco: le ho spostate sulla cella libera più vicina."}
+                  </p>
+                )}
+                {report.disconnected && (
+                  <p className="mt-1 text-[var(--color-ink-2)]">
+                    Dall&apos;ingresso non si arriva alle casse: il percorso non può essere calcolato.
+                  </p>
+                )}
                 {report.blocked.length > 0 && (
                   <p className="mt-1 text-[var(--color-ink-2)]">
                     {report.blocked.length} punti finiti sotto un blocco ({report.blocked.slice(0, 3).join(", ")}
@@ -469,14 +523,20 @@ export function MapEditor({
 
           <button
             type="button"
-            onClick={() => setPlacing("entrance")}
+            onClick={() => {
+              setPlacing("entrance");
+              setPlacingError(null);
+            }}
             className="shrink-0 rounded-full border border-[var(--color-line)] px-3 py-2 text-xs whitespace-nowrap"
           >
             Ingresso
           </button>
           <button
             type="button"
-            onClick={() => setPlacing("checkout")}
+            onClick={() => {
+              setPlacing("checkout");
+              setPlacingError(null);
+            }}
             className="shrink-0 rounded-full border border-[var(--color-line)] px-3 py-2 text-xs whitespace-nowrap"
           >
             Casse
