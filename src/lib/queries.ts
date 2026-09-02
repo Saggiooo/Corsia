@@ -26,6 +26,15 @@ export async function getDefaultStore(userId: string) {
   return stores.find((store) => store.status === "active") ?? null;
 }
 
+/** Il negozio chiesto, se esiste; altrimenti quello predefinito. */
+export async function getStoreOrDefault(storeId?: string) {
+  if (storeId) {
+    const store = await prisma.store.findUnique({ where: { id: storeId } });
+    if (store) return store;
+  }
+  return getStore();
+}
+
 export type MapData = {
   width: number;
   height: number;
@@ -163,13 +172,27 @@ export async function getCategories() {
   return prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
 }
 
-export async function getLists(userId: string) {
+/**
+ * Una lista aperta e mai riempita non serve a nessuno: si cancella appena si
+ * torna alla home, cosi' l'elenco resta quello che hai davvero preparato.
+ */
+export async function pruneEmptyLists(userId: string) {
+  await prisma.list.deleteMany({ where: { userId, items: { none: {} } } });
+}
+
+/** Le liste di un supermercato: la home mostra solo quelle del negozio selezionato. */
+export async function getLists(userId: string, storeId: string) {
   return prisma.list.findMany({
-    where: { userId },
+    where: { userId, storeId },
     orderBy: { createdAt: "desc" },
     take: 20,
-    include: { _count: { select: { items: true } }, items: { select: { checked: true } } },
+    include: { _count: { select: { items: true } }, store: { select: { name: true } } },
   });
+}
+
+/** Quante liste restano fuori dal filtro: evita di far credere che siano sparite. */
+export async function countListsElsewhere(userId: string, storeId: string) {
+  return prisma.list.count({ where: { userId, storeId: { not: storeId } } });
 }
 
 /** Filtra per proprietario: un id indovinato non basta ad aprire la lista altrui. */

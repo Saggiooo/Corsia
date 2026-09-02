@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { StoreMap } from "@/components/map/StoreMap";
-import { getMapData, getStore } from "@/lib/queries";
+import { getMapData, getStoreOrDefault } from "@/lib/queries";
 import { requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +15,15 @@ const LEGEND = [
   { token: "checkout", label: "Casse" },
 ];
 
-export default async function MapPage() {
+export default async function MapPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ negozio?: string }>;
+}) {
+  const { negozio } = await searchParams;
   const user = await requireUser();
-  const store = await getStore();
+  // La home ha piu' supermercati: la mappa apre quello da cui sei arrivato.
+  const store = await getStoreOrDefault(negozio);
   const map = await getMapData(store.id);
   const meters = (cells: number) => Math.round((cells * store.cellSizeCm) / 100);
 
@@ -25,7 +31,7 @@ export default async function MapPage() {
     <main className="flex h-dvh flex-col overflow-hidden">
       <header className="flex items-center justify-between px-5 pt-6 pb-3">
         <Link
-          href="/"
+          href={`/?negozio=${store.id}`}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-line)] text-[var(--color-ink-2)]"
           aria-label="Torna alla home"
         >

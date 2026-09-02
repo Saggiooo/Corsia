@@ -1,25 +1,12 @@
 import Link from "next/link";
 import { createList, toggleFavoriteStore } from "@/app/actions";
 import { Icon } from "@/components/icons/Icon";
-import { StoreMap } from "@/components/map/StoreMap";
 import { Wordmark } from "@/components/ui/Wordmark";
-import { getLists, getMapData, getStores } from "@/lib/queries";
+import { countListsElsewhere, getLists, getStores, pruneEmptyLists } from "@/lib/queries";
 import { requireUser } from "@/lib/auth/session";
 import { signOutAction } from "@/app/accedi/actions";
 
 export const dynamic = "force-dynamic";
-
-function progressOf(items: { checked: boolean }[]) {
-  if (items.length === 0) return 0;
-  return Math.round((items.filter((i) => i.checked).length / items.length) * 100);
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "In preparazione",
-  routed: "Percorso pronto",
-  shopping: "In corso",
-  done: "Completata",
-};
 
 export default async function HomePage({
   searchParams,
@@ -29,9 +16,17 @@ export default async function HomePage({
   const { negozio } = await searchParams;
   const user = await requireUser();
 
-  const [stores, lists] = await Promise.all([getStores(user.id), getLists(user.id)]);
+  // Chi torna qui ha finito di preparare: le liste rimaste vuote non servono.
+  await pruneEmptyLists(user.id);
+
+  const stores = await getStores(user.id);
   const selected = stores.find((store) => store.id === negozio) ?? stores[0];
-  const map = selected.status === "active" ? await getMapData(selected.id) : null;
+  const ready = selected.status === "active";
+
+  const [lists, elsewhere] = await Promise.all([
+    getLists(user.id, selected.id),
+    countListsElsewhere(user.id, selected.id),
+  ]);
 
   return (
     <main className="mx-auto w-full max-w-lg px-5 pt-10 pb-32">
@@ -41,12 +36,6 @@ export default async function HomePage({
           <Wordmark className="mt-1" />
         </div>
         <div className="mb-2 flex items-center gap-2">
-          <Link
-            href="/mappa"
-            className="rounded-full border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] active:bg-[var(--color-paper-2)]"
-          >
-            Mappa
-          </Link>
           {user.role === "admin" && (
             <Link
               href="/admin"
@@ -143,22 +132,24 @@ export default async function HomePage({
                 {star}
               </div>
 
-              {comingSoon || !map ? (
+              {comingSoon ? (
                 <p className="px-5 pb-5 text-sm text-[var(--color-ink-3)]">
                   Non è ancora mappato: appena la planimetria è pronta lo trovi qui.
                 </p>
               ) : (
-                <div className="px-2 pb-3 opacity-90">
-                  <StoreMap
-                    grid={map.grid}
-                    fixtures={map.fixtures}
-                    entrance={map.entrance}
-                    checkout={map.checkout}
-                    aspect={map.width / map.height}
-                    maxHeightPx={280}
-                    className="mx-auto w-full"
-                  />
-                </div>
+                <Link
+                  href={`/mappa?negozio=${store.id}`}
+                  className="flex items-center gap-3 border-t border-[var(--color-line)] px-5 py-3.5 active:bg-[var(--color-paper-2)]"
+                >
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px]"
+                    style={{ background: "var(--color-brand-soft)", color: "var(--color-brand)" }}
+                  >
+                    <Icon name="map" size={18} />
+                  </span>
+                  <span className="flex-1 text-sm font-medium">Vedi la mappa</span>
+                  <span className="text-[var(--color-ink-3)]">›</span>
+                </Link>
               )}
             </article>
           );
@@ -168,54 +159,67 @@ export default async function HomePage({
       <section className="mt-9">
         <div className="flex items-baseline justify-between">
           <h2 className="font-display text-lg">Le tue liste</h2>
+          {/* Sono solo quelle del negozio selezionato: il nome sta su ogni riga. */}
           <span className="text-xs text-[var(--color-ink-3)]">{lists.length}</span>
         </div>
 
         {lists.length === 0 ? (
           <p className="plate mt-3 p-5 text-sm text-[var(--color-ink-3)]">
-            Nessuna lista. Creane una e Corsia calcola l&apos;ordine in cui prendere le cose.
+            Nessuna lista per {selected.name}. Creane una e Corsia calcola l&apos;ordine in cui
+            prendere le cose.
           </p>
         ) : (
           <ul className="mt-3 space-y-2.5">
-            {lists.map((list, i) => {
-              const progress = progressOf(list.items);
-              return (
-                <li key={list.id} style={{ animation: `rise .4s ${i * 40}ms both` }}>
-                  <Link
-                    href={list.status === "shopping" ? `/liste/${list.id}/spesa` : `/liste/${list.id}`}
-                    className="plate flex items-center gap-4 p-4 transition-transform active:scale-[0.99]"
+            {lists.map((list, i) => (
+              <li key={list.id} style={{ animation: `rise .4s ${i * 40}ms both` }}>
+                <Link
+                  href={`/liste/${list.id}`}
+                  className="plate flex items-center gap-4 p-4 transition-transform active:scale-[0.99]"
+                >
+                  {/* Pastiglia piena: quanti articoli ci sono, non a che punto sei. */}
+                  <span
+                    className="font-display flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[15px] text-[var(--color-paper)]"
+                    style={{
+                      background: "var(--color-signal)",
+                      boxShadow: "0 0 0 4px var(--color-signal-soft)",
+                    }}
                   >
-                    <span className="relative flex h-11 w-11 shrink-0 items-center justify-center">
-                      <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90">
-                        <circle cx="20" cy="20" r="17" fill="none" stroke="var(--color-paper-3)" strokeWidth="4" />
-                        <circle
-                          cx="20"
-                          cy="20"
-                          r="17"
-                          fill="none"
-                          stroke={progress === 100 ? "var(--color-brand)" : "var(--color-signal)"}
-                          strokeWidth="4"
-                          strokeLinecap="round"
-                          pathLength={100}
-                          strokeDasharray={`${progress} 100`}
-                        />
-                      </svg>
-                      <span className="font-display text-sm">{list._count.items}</span>
-                    </span>
+                    {list._count.items}
+                  </span>
 
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{list.name}</span>
-                      <span className="tag text-[var(--color-ink-3)]">{STATUS_LABEL[list.status]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{list.name}</span>
+                    <span className="tag flex items-center gap-1 text-[var(--color-ink-3)]">
+                      <Icon name="pin" size={12} className="shrink-0" />
+                      <span className="truncate">{list.store.name}</span>
                     </span>
+                  </span>
 
-                    <span className="text-[var(--color-ink-3)]">›</span>
-                  </Link>
-                </li>
-              );
-            })}
+                  <span className="text-[var(--color-ink-3)]">›</span>
+                </Link>
+              </li>
+            ))}
           </ul>
         )}
+
+        {elsewhere > 0 && (
+          <p className="mt-3 px-1 text-xs text-[var(--color-ink-3)]">
+            {elsewhere === 1
+              ? "1 lista in un altro supermercato: cambia negozio qui sopra per vederla."
+              : `${elsewhere} liste negli altri supermercati: cambia negozio qui sopra per vederle.`}
+          </p>
+        )}
       </section>
+
+      {/* La barra e' fissa: una sfumatura di carta stacca il pulsante dal contenuto che ci scorre sotto. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-36"
+        style={{
+          background:
+            "linear-gradient(to top, var(--color-paper) 38%, color-mix(in srgb, var(--color-paper) 70%, transparent) 68%, transparent)",
+        }}
+      />
 
       <form
         action={createList.bind(null, selected.id)}
@@ -224,10 +228,43 @@ export default async function HomePage({
       >
         <button
           type="submit"
-          disabled={selected.status !== "active"}
-          className="font-display w-full rounded-full bg-[var(--color-ink)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98] disabled:opacity-45"
+          disabled={!ready}
+          aria-label={
+            ready ? `Nuova lista da ${selected.name}` : `${selected.name} non e' ancora disponibile`
+          }
+          className="grain relative flex w-full items-center gap-3.5 overflow-hidden rounded-[26px] bg-[var(--color-ink)] px-4 py-3 text-left text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98] disabled:opacity-45"
         >
-          {selected.status === "active" ? `Nuova lista · ${selected.name}` : "Non ancora disponibile"}
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px]"
+            style={{
+              background: "color-mix(in srgb, var(--color-brand) 34%, transparent)",
+              color: "var(--color-brand-soft)",
+            }}
+          >
+            <Icon name={ready ? "listPlus" : "clock"} size={22} />
+          </span>
+
+          <span className="min-w-0 flex-1">
+            <span className="font-display block text-lg leading-tight">
+              {ready ? "Nuova lista" : "Non ancora disponibile"}
+            </span>
+            {/* Il supermercato non e' un suffisso del titolo: e' la destinazione, come su un cartello. */}
+            <span
+              className="tag mt-0.5 flex items-center gap-1.5"
+              style={{ color: "color-mix(in srgb, var(--color-brand) 42%, var(--color-paper))" }}
+            >
+              <Icon name="pin" size={12} className="shrink-0" />
+              <span className="truncate">{selected.name}</span>
+            </span>
+          </span>
+
+          <span
+            aria-hidden
+            className="font-display shrink-0 pr-1 text-xl"
+            style={{ color: "color-mix(in srgb, var(--color-paper) 45%, transparent)" }}
+          >
+            {ready ? "→" : "·"}
+          </span>
         </button>
       </form>
 

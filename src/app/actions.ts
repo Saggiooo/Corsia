@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getStore } from "@/lib/queries";
+import { getStore, pruneEmptyLists } from "@/lib/queries";
 import { requireAdmin, requireUser } from "@/lib/auth/session";
 import { bfsFrom, parseGrid, UNREACHABLE } from "@/lib/routing/grid";
 import { groupCells } from "@/lib/map/shapes";
@@ -51,6 +51,9 @@ export async function createList(storeId?: string) {
     : await getStore();
 
   if (store.status !== "active") throw new Error("Questo supermercato non e' ancora mappato");
+
+  // Ne resta una sola aperta: quelle vuote di prima si buttano.
+  await pruneEmptyLists(user.id);
 
   const list = await prisma.list.create({
     data: { storeId: store.id, userId: user.id, name: defaultListName() },

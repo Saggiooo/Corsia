@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { computeRoute, startShopping } from "@/app/actions";
+import { Icon } from "@/components/icons/Icon";
 import { StoreMap, type MapFixture, type MapLabel } from "@/components/map/StoreMap";
 import { AisleBadge } from "@/components/ui/AisleBadge";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
@@ -134,7 +135,6 @@ export function RouteView({ listId, mode, distanceM, estMinutes, snapshot, path,
                     ) : null}
                     <p className="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">
                       {stop.locationLabel}
-                      {stop.size ? ` · ${stop.size}` : ""}
                     </p>
                   </div>
                   {stop.qty > 1 && (
@@ -184,8 +184,9 @@ export function RouteView({ listId, mode, distanceM, estMinutes, snapshot, path,
         <form action={startShopping.bind(null, listId)}>
           <button
             type="submit"
-            className="font-display w-full rounded-full bg-[var(--color-signal)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98]"
+            className="font-display flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-signal)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98]"
           >
+            <Icon name="cart" size={22} />
             Inizia la spesa
           </button>
         </form>

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { createReport, finishShopping, movePlacement, toggleChecked } from "@/app/actions";
+import { Icon } from "@/components/icons/Icon";
 import { LocationPicker } from "@/components/map/LocationPicker";
 import { StoreMap, type Focus, type MapFixture, type MapLabel } from "@/components/map/StoreMap";
 import { splitLegs } from "@/lib/map/trace";
@@ -252,15 +254,9 @@ export function ShopMode({
             <p className="font-display mt-1 text-xl leading-tight text-[var(--color-signal)]">{stop.note}</p>
           ) : null}
           <p className="mt-1 text-[var(--color-ink-3)]">
-            {stop.size ?? stop.categoryName}
+            {stop.categoryName}
             {stop.qty > 1 ? ` · ${stop.qty} pezzi` : ""}
           </p>
-          {!stop.confirmed && (
-            <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--color-signal-soft)] px-3 py-1.5 text-xs text-[var(--color-signal)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-signal)]" />
-              Posizione ipotizzata
-            </p>
-          )}
         </div>
 
         <div className="plate mt-7 overflow-hidden">
@@ -313,54 +309,74 @@ export function ShopMode({
       </section>
 
       {/* Comandi */}
+      {/* La sfumatura si esaurisce prima dei comandi: sotto ai tasti serve carta piena. */}
       <footer
-        className="sticky bottom-0 mt-auto bg-gradient-to-t from-[var(--color-paper)] via-[var(--color-paper)] to-transparent px-5 pt-6"
-        style={{ paddingBottom: "calc(1rem + var(--safe-b))" }}
+        className="sticky bottom-0 mt-auto px-5 pt-10"
+        style={{
+          paddingBottom: "calc(1rem + var(--safe-b))",
+          background:
+            "linear-gradient(to top, var(--color-paper) 86%, color-mix(in srgb, var(--color-paper) 70%, transparent) 95%, transparent)",
+        }}
       >
-        <div className="mb-3 flex gap-2">
+        <div className="mb-3 flex items-center gap-2">
           <button
             type="button"
+            aria-label="Tappa precedente"
             onClick={() => setIndex((i) => Math.max(0, i - 1))}
             disabled={index === 0}
-            className="rounded-full border border-[var(--color-line)] px-4 py-2.5 text-sm disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--color-line)] text-lg disabled:opacity-40"
           >
-            ‹ Prima
+            ‹
           </button>
           <button
             type="button"
+            aria-label="Salta questa tappa"
             onClick={advance}
             disabled={index >= stops.length - 1}
-            className="rounded-full border border-[var(--color-line)] px-4 py-2.5 text-sm disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--color-line)] text-lg disabled:opacity-40"
           >
-            Salta ›
+            ›
           </button>
+
           <button
             type="button"
             onClick={() => {
               setSent(false);
               setRelocating(true);
             }}
-            className="ml-auto rounded-full border border-[var(--color-line)] px-4 py-2.5 text-sm text-[var(--color-signal)]"
+            className="ml-auto flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-3.5 py-2.5 text-sm text-[var(--color-signal)]"
           >
-            {sent ? "Segnalato ✓" : "Non è qui"}
+            <Icon name="flag" size={16} />
+            {sent ? "Segnalato" : "Non è qui"}
           </button>
+
+          {/* La spesa resta dov'e': quello che hai preso e' gia' salvato. */}
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 rounded-full border border-[var(--color-line)] px-3.5 py-2.5 text-sm text-[var(--color-ink-2)]"
+          >
+            <Icon name="exit" size={16} />
+            Esci
+          </Link>
         </div>
 
         {done[stop.itemId] ? (
           <button
             type="button"
             onClick={undo}
-            className="font-display w-full rounded-full border-2 border-[var(--color-brand)] py-4 text-lg text-[var(--color-brand)]"
+            className="font-display flex w-full items-center justify-center gap-2 rounded-full border-2 border-[var(--color-brand)] py-4 text-lg text-[var(--color-brand)]"
           >
-            Preso ✓ — annulla
+            <Icon name="check" size={20} />
+            Preso! — annulla
           </button>
         ) : (
           <button
             type="button"
             onClick={take}
-            className="font-display w-full rounded-full bg-[var(--color-ink)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.97]"
+            className="font-display flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-ink)] py-4 text-lg text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.97]"
           >
-            Preso
+            <Icon name="check" size={20} />
+            Preso!
           </button>
         )}
 

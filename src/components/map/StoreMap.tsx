@@ -268,15 +268,8 @@ export function StoreMap({
         </defs>
 
         <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
-          {/* Pavimento */}
-          <rect
-            x={view.x}
-            y={view.y}
-            width={view.w}
-            height={view.h}
-            rx={1.2}
-            fill="var(--color-paper-2)"
-          />
+          {/* Pavimento: si ferma ai muri del negozio, fuori non c'e' niente da disegnare. */}
+          <rect x={0} y={0} width={width} height={height} rx={0.8} fill="var(--color-paper-2)" />
           <rect x={0} y={0} width={width} height={height} fill="url(#floor-dots)" />
           <rect
             x={0.15}
@@ -396,15 +389,20 @@ export function StoreMap({
               fill="none"
               strokeLinecap="round"
             />
-            <circle cx={checkout[0] + 0.5} cy={checkout[1] + 0.5} r={1.1} fill="var(--color-ink)" />
-            <path
-              d={`M${checkout[0] + 0.02} ${checkout[1] + 0.28} h0.35 l0.25 0.72 h0.9 l0.2 -0.55 h-1`}
-              stroke="var(--color-paper)"
-              strokeWidth={0.15}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <g transform={`translate(${checkout[0] + 0.5} ${checkout[1] + 0.5})`}>
+              <circle r={1.1} fill="var(--color-ink)" />
+              <g
+                stroke="var(--color-paper)"
+                strokeWidth={0.16}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M-0.12 -0.52 H-0.5 V0.52 H-0.12" />
+                <path d="M-0.05 0 H0.5" />
+                <path d="m0.2 -0.28 0.3 0.28 -0.3 0.28" />
+              </g>
+            </g>
           </g>
 
           {/* Scaffale bersaglio */}

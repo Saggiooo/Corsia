@@ -66,6 +66,8 @@ const SAVED = "__salvati__";
 
 export function ListEditor({ listId, items, categories, frequent, saved }: Props) {
   const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [addedWhileBrowsing, setAddedWhileBrowsing] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -117,12 +119,12 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
     return [...map.entries()];
   }, [items]);
 
-  const total = items.reduce((sum, i) => sum + i.qty, 0);
 
   const reset = () => {
     setQuery("");
     setCategory(null);
     setHits([]);
+    setAddedWhileBrowsing(false);
   };
 
   return (
@@ -217,12 +219,10 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
                 <div className="plate flex items-center gap-3 p-3">
                   <button
                     type="button"
-                    onClick={() =>
-                      startTransition(async () => {
-                        await addSavedProduct(listId, entry.id);
-                        reset();
-                      })
-                    }
+                    onClick={() => {
+                      setAddedWhileBrowsing(true);
+                      startTransition(() => addSavedProduct(listId, entry.id));
+                    }}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
                     <ProductAvatar
@@ -259,25 +259,6 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
             <p className="py-8 text-center text-sm text-[var(--color-ink-3)]">Cerco…</p>
           )}
 
-          {!searching && hits.length === 0 && query.trim().length >= 2 && (
-            <button
-              type="button"
-              onClick={() =>
-                startTransition(async () => {
-                  await addFreeText(listId, query);
-                  reset();
-                })
-              }
-              className="plate mt-3 flex w-full items-center gap-3 p-4 text-left"
-            >
-              <ProductAvatar iconKey="basket" colorToken="pantry" />
-              <span>
-                <span className="block font-medium">Aggiungi &ldquo;{query.trim()}&rdquo;</span>
-                <span className="tag text-[var(--color-ink-3)]">Senza corsia, in fondo al percorso</span>
-              </span>
-            </button>
-          )}
-
           <ul className="mt-2 space-y-2">
             {hits.map((hit, i) => {
               const already = inList.get(hit.name);
@@ -285,14 +266,11 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
                 <li key={hit.id} style={{ animation: `rise .28s ${Math.min(i, 12) * 25}ms both` }}>
                   <button
                     type="button"
-                    onClick={() =>
-                      startTransition(async () => {
-                        await addProduct(listId, hit.id);
-                        // Torna subito alla lista: si aggiunge una cosa per volta
-                        // e si vuole vedere l'effetto prima di cercare la prossima.
-                        reset();
-                      })
-                    }
+                    onClick={() => {
+                      // Si resta nei risultati: spesso si aggiungono piu' cose di fila.
+                      setAddedWhileBrowsing(true);
+                      startTransition(() => addProduct(listId, hit.id));
+                    }}
                     className="plate flex w-full items-center gap-3 p-3 text-left transition-transform active:scale-[0.99]"
                   >
                     <ProductAvatar
@@ -303,7 +281,7 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{hit.name}</span>
                       <span className="mt-1 flex items-center gap-2">
-                        {hit.aisleName && <AisleBadge aisle={hit.aisleName} detail={hit.size} tone="soft" />}
+                        {hit.aisleName && <AisleBadge aisle={hit.aisleName} tone="soft" />}
                         {!hit.confirmed && (
                           <span
                             className="h-1.5 w-1.5 rounded-full bg-[var(--color-signal)]"
@@ -326,6 +304,29 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
               );
             })}
           </ul>
+
+          {query.trim().length >= 2 && (
+            <button
+              type="button"
+              onClick={() =>
+                startTransition(async () => {
+                  await addFreeText(listId, query);
+                  reset();
+                })
+              }
+              className="plate mt-2 flex w-full items-center gap-3 p-4 text-left"
+            >
+              <ProductAvatar iconKey="basket" colorToken="pantry" />
+              <span className="min-w-0">
+                <span className="block truncate font-medium">
+                  Aggiungi &ldquo;{query.trim()}&rdquo;
+                </span>
+                <span className="block text-[12px] text-[var(--color-ink-3)]">
+                  Senza corsia, in fondo al percorso
+                </span>
+              </span>
+            </button>
+          )}
         </section>
       ) : (
         <section className="mt-4 pb-28">
@@ -379,111 +380,199 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
                 </div>
 
                 <ul className="space-y-2">
-                  {group.map((item) => (
-                    <li key={item.id} className="plate p-3">
-                      <div className="flex items-start gap-3">
-                        <ProductAvatar
-                          iconKey={item.iconKey}
-                          fallback={item.categoryIcon}
-                          colorToken={item.colorToken}
-                        />
+                  {group.map((item) => {
+                    const open = selected === item.id;
+                    const isSaved = savedKeys.has(`${item.productId}::${item.note ?? ""}`);
 
-                        <div className="min-w-0 flex-1 pt-0.5">
-                          <p className="truncate font-medium">{item.name}</p>
-                          {item.note ? (
-                            <p className="truncate text-[13px] text-[var(--color-signal)]">{item.note}</p>
-                          ) : null}
-                          <div className="mt-1.5 flex">
-                            <AisleBadge
-                              aisle={item.aisleName ?? "Senza corsia"}
-                              detail={item.locationLabel}
-                              tone="soft"
-                            />
-                          </div>
-                        </div>
+                    return (
+                      <li
+                        key={item.id}
+                        className="plate overflow-hidden"
+                        style={open ? { borderColor: `var(--${item.colorToken})` } : undefined}
+                      >
+                        {/* La riga e' pulita: i comandi arrivano solo quando la scegli. */}
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => {
+                            setSelected(open ? null : item.id);
+                            setEditingNote(null);
+                          }}
+                          className="flex w-full items-start gap-3 p-3 text-left"
+                        >
+                          <ProductAvatar
+                            iconKey={item.iconKey}
+                            fallback={item.categoryIcon}
+                            colorToken={item.colorToken}
+                          />
 
-                        {/* Comandi impilati: sulla riga singola il nome finiva troncato. */}
-                        <div className="flex shrink-0 flex-col items-end gap-1.5">
-                          <div className="flex items-center gap-0.5 rounded-full bg-[var(--color-paper-2)] p-1">
-                            <button
-                              type="button"
-                              aria-label="Togli uno"
-                              onClick={() => startTransition(() => setQty(item.id, item.qty - 1))}
-                              className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                          <span className="min-w-0 flex-1 pt-0.5">
+                            <span className="block truncate font-medium">{item.name}</span>
+                            {item.note ? (
+                              <span className="block truncate text-[13px] text-[var(--color-signal)]">
+                                {item.note}
+                              </span>
+                            ) : null}
+                            <span className="mt-1.5 flex">
+                              <AisleBadge
+                                aisle={item.aisleName ?? "Senza corsia"}
+                                detail={item.locationLabel}
+                                tone="soft"
+                              />
+                            </span>
+                          </span>
+
+                          <span className="flex shrink-0 items-center gap-2 pt-1 text-[var(--color-ink-3)]">
+                            {item.qty > 1 && (
+                              <span className="font-display rounded-full bg-[var(--color-paper-2)] px-2.5 py-1 text-sm text-[var(--color-ink)]">
+                                ×{item.qty}
+                              </span>
+                            )}
+                            <span
+                              className="inline-block transition-transform"
+                              style={{ transform: open ? "rotate(90deg)" : undefined }}
                             >
-                              −
-                            </button>
-                            <span className="font-display w-4 text-center text-sm">{item.qty}</span>
-                            <button
-                              type="button"
-                              aria-label="Aggiungi uno"
-                              onClick={() => startTransition(() => setQty(item.id, item.qty + 1))}
-                              className="h-7 w-7 rounded-full text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
-                            >
-                              +
-                            </button>
-                          </div>
+                              ›
+                            </span>
+                          </span>
+                        </button>
 
-                          <div className="flex items-center gap-1">
-                            {item.productId && (
+                        {open && (
+                          <div
+                            className="border-t border-[var(--color-line)] p-3"
+                            style={{ animation: "rise .2s both" }}
+                          >
+                            <div className="flex items-center justify-between rounded-full bg-[var(--color-paper-2)] p-1.5">
                               <button
                                 type="button"
-                                aria-label={`Salva ${item.name} con la sua nota`}
-                                onClick={() =>
-                                  startTransition(() => saveProduct(item.productId!, item.note ?? ""))
-                                }
-                                className="flex h-7 w-7 items-center justify-center rounded-full"
+                                aria-label="Togli uno"
+                                onClick={() => startTransition(() => setQty(item.id, item.qty - 1))}
+                                className="h-11 w-11 rounded-full text-xl text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                              >
+                                −
+                              </button>
+                              <span className="font-display text-lg">{item.qty}</span>
+                              <button
+                                type="button"
+                                aria-label="Aggiungi uno"
+                                onClick={() => startTransition(() => setQty(item.id, item.qty + 1))}
+                                className="h-11 w-11 rounded-full text-xl text-[var(--color-ink-2)] active:bg-[var(--color-paper-3)]"
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <div
+                              className={`mt-2 grid gap-2 ${item.productId ? "grid-cols-3" : "grid-cols-2"}`}
+                            >
+                              {item.productId && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    startTransition(() => saveProduct(item.productId!, item.note ?? ""))
+                                  }
+                                  className="flex h-12 items-center justify-center gap-1.5 rounded-[14px] text-sm font-medium"
+                                  style={
+                                    isSaved
+                                      ? { background: "var(--color-brand-soft)", color: "var(--color-brand)" }
+                                      : { background: "var(--color-paper-2)", color: "var(--color-ink-2)" }
+                                  }
+                                >
+                                  <Icon name="bookmark" size={18} />
+                                  {isSaved ? "Salvato" : "Salva"}
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => setEditingNote(editingNote === item.id ? null : item.id)}
+                                className="flex h-12 items-center justify-center gap-1.5 rounded-[14px] text-sm font-medium"
                                 style={
-                                  savedKeys.has(`${item.productId}::${item.note ?? ""}`)
-                                    ? { background: "var(--color-brand-soft)", color: "var(--color-brand)" }
-                                    : { color: "var(--color-ink-3)" }
+                                  item.note || editingNote === item.id
+                                    ? { background: "var(--color-signal-soft)", color: "var(--color-signal)" }
+                                    : { background: "var(--color-paper-2)", color: "var(--color-ink-2)" }
                                 }
                               >
-                                <Icon name="bookmark" size={15} />
+                                <Icon name="pencil" size={18} />
+                                Nota
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              aria-label={`Aggiungi una nota a ${item.name}`}
-                              onClick={() => setEditingNote(editingNote === item.id ? null : item.id)}
-                              className="flex h-7 w-7 items-center justify-center rounded-full"
-                              style={
-                                item.note || editingNote === item.id
-                                  ? { background: "var(--color-signal-soft)", color: "var(--color-signal)" }
-                                  : { color: "var(--color-ink-3)" }
-                              }
-                            >
-                              <Icon name="pencil" size={15} />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={`Rimuovi ${item.name}`}
-                              onClick={() => startTransition(() => removeItem(item.id))}
-                              className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-ink-3)]"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        </div>
-                      </div>
 
-                      {editingNote === item.id && (
-                        <NoteField
-                          initial={item.note ?? ""}
-                          onSave={(note) => {
-                            setEditingNote(null);
-                            startTransition(() => setNote(item.id, note));
-                          }}
-                          onCancel={() => setEditingNote(null)}
-                        />
-                      )}
-                    </li>
-                  ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelected(null);
+                                  startTransition(() => removeItem(item.id));
+                                }}
+                                className="flex h-12 items-center justify-center gap-1.5 rounded-[14px] text-sm font-medium"
+                                style={{ background: "var(--meat-soft)", color: "var(--meat)" }}
+                              >
+                                <span className="text-base leading-none">✕</span>
+                                Togli
+                              </button>
+                            </div>
+
+                            {editingNote === item.id && (
+                              <NoteField
+                                initial={item.note ?? ""}
+                                onSave={(note) => {
+                                  setEditingNote(null);
+                                  startTransition(() => setNote(item.id, note));
+                                }}
+                                onCancel={() => setEditingNote(null)}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ))
           )}
         </section>
+      )}
+
+      {browsing && addedWhileBrowsing && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-lg px-5"
+          style={{ paddingBottom: "calc(1.25rem + var(--safe-b))" }}
+        >
+          {/* Stessa uscita della ✕ nella barra: torna alla lista quando hai finito. */}
+          <button
+            type="button"
+            onClick={reset}
+            className="grain relative flex w-full items-center gap-3.5 overflow-hidden rounded-[26px] bg-[var(--color-ink)] px-4 py-3 text-left text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98]"
+          >
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px]"
+              style={{
+                background: "color-mix(in srgb, var(--color-brand) 34%, transparent)",
+                color: "var(--color-brand-soft)",
+              }}
+            >
+              <Icon name="list" size={22} />
+            </span>
+
+            <span className="min-w-0 flex-1">
+              <span className="font-display block text-lg leading-tight">Vedi la lista</span>
+              <span
+                className="mt-0.5 block truncate text-[10px] font-semibold tracking-[0.07em] uppercase"
+                style={{ color: "color-mix(in srgb, var(--color-brand) 42%, var(--color-paper))" }}
+              >
+                {items.length} {items.length === 1 ? "articolo" : "articoli"}
+              </span>
+            </span>
+
+            <span
+              aria-hidden
+              className="font-display shrink-0 pr-1 text-xl"
+              style={{ color: "color-mix(in srgb, var(--color-paper) 45%, transparent)" }}
+            >
+              →
+            </span>
+          </button>
+        </div>
       )}
 
       {items.length > 0 && !browsing && (
@@ -495,10 +584,38 @@ export function ListEditor({ listId, items, categories, frequent, saved }: Props
             <button
               type="submit"
               disabled={pending}
-              className="font-display flex w-full items-center justify-between rounded-full bg-[var(--color-ink)] px-6 py-4 text-left text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98] disabled:opacity-60"
+              className="grain relative flex w-full items-center gap-3.5 overflow-hidden rounded-[26px] bg-[var(--color-ink)] px-4 py-3 text-left text-[var(--color-paper)] shadow-[var(--shadow-float)] transition-transform active:scale-[0.98] disabled:opacity-60"
             >
-              <span className="text-lg">Calcola il percorso</span>
-              <span className="rounded-full bg-white/15 px-3 py-1 text-sm">{total}</span>
+              {/* L'arancione segnale e' il colore del percorso: qui e' al posto giusto. */}
+              <span
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px]"
+                style={{
+                  background: "color-mix(in srgb, var(--color-signal) 62%, transparent)",
+                  color: "var(--color-paper)",
+                }}
+              >
+                <Icon name="route" size={22} />
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <span className="font-display block text-lg leading-tight">
+                  {pending ? "Sto calcolando…" : "Calcola il percorso"}
+                </span>
+                <span
+                  className="mt-0.5 block truncate text-[10px] font-semibold tracking-[0.07em] uppercase"
+                  style={{ color: "color-mix(in srgb, var(--color-signal) 42%, var(--color-paper))" }}
+                >
+                  {items.length} {items.length === 1 ? "articolo" : "articoli"} · in ordine di corsia
+                </span>
+              </span>
+
+              <span
+                aria-hidden
+                className="font-display shrink-0 pr-1 text-xl"
+                style={{ color: "color-mix(in srgb, var(--color-paper) 45%, transparent)" }}
+              >
+                →
+              </span>
             </button>
           </form>
         </div>
